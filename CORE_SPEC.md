@@ -1,6 +1,6 @@
-CORE_SPEC.md: Route Alerts (MVP v1.3)
-1. Executive Summary
-Route Alerts is a high-utility safety application for commercial truck drivers on dedicated routes. It automates the "morning weather check" by scanning a specific route for high-risk conditions (wind, snow, ice, tornadoes) and construction delays during the driver's shift window.
+CORE_SPEC.md: Haul Alerts (MVP v1.3)
+
+Haul Alerts is a high-utility safety application for commercial truck drivers on dedicated routes. It automates the "morning weather check" by scanning a specific route for high-risk conditions (wind, snow, ice, tornadoes) and construction delays during the driver's shift window.
 
 2. Core Tech Stack
 Frontend: Flutter (iOS/Android)

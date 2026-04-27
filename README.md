@@ -1,6 +1,6 @@
-# Route Alerts 🚛💨
+# Haul Alerts 🚛💨
 
-Route Alerts is a high-utility safety application specifically designed for commercial truck drivers on dedicated routes. It automates the critical "morning weather check," ensuring drivers are alerted to high-risk conditions before they hit the road.
+Haul Alerts is a high-utility safety application specifically designed for commercial truck drivers on dedicated routes. It automates the critical "morning weather check," ensuring drivers are alerted to high-risk conditions before they hit the road.
 
 ## 🌟 Key Features
 

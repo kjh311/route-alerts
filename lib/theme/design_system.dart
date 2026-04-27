@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Route Alerts Design System
+/// Haul Alerts Design System
 /// 
 /// A rugged, high-contrast theme engineered for high-vibration truck environments.
 /// Updated to match the high-fidelity HTML specification.

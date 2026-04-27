@@ -1,10 +1,8 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
-project(route_alerts LANGUAGES CXX)
+project(haul_alerts LANGUAGES CXX)
 
-# The name of the executable created for the application. Change this to change
-# the on-disk name of your application.
-set(BINARY_NAME "route_alerts")
+set(BINARY_NAME "haul_alerts")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.

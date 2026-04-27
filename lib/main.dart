@@ -31,7 +31,7 @@ Future<void> main() async {
     print('DEBUG: SubscriptionService initialized');
 
     print('DEBUG: Running App...');
-    runApp(const RouteAlertsApp());
+    runApp(const HaulAlertsApp());
   } catch (e, stack) {
     print('CRITICAL ERROR during initialization: $e');
     print('Stack trace: $stack');
@@ -47,14 +47,14 @@ Future<void> main() async {
 }
 
 
-class RouteAlertsApp extends StatelessWidget {
-  const RouteAlertsApp({super.key});
+class HaulAlertsApp extends StatelessWidget {
+  const HaulAlertsApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Route Alerts',
+      title: 'Haul Alerts',
       theme: AppDesignSystem.themeData,
       home: const AuthWrapper(),
     );

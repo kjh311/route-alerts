@@ -1,4 +1,4 @@
-package com.jh311.route_alerts
+package com.jh311.haul_alerts
 
 import io.flutter.embedding.android.FlutterActivity
 

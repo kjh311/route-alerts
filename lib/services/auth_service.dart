@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
@@ -36,7 +37,7 @@ class AuthService {
       );
     }
 
-    // 2. Listen to user changes to handle background authentication
+    // 3. Listen to user changes to handle background authentication
     GoogleSignIn.instance.authenticationEvents.listen((GoogleSignInAuthenticationEvent event) async {
       if (event is GoogleSignInAuthenticationEventSignIn) {
         try {
@@ -46,6 +47,9 @@ class AuthService {
         }
       }
     });
+
+    // 4. Attempt silent sign-in for existing sessions
+    unawaited(GoogleSignIn.instance.attemptLightweightAuthentication());
   }
 
   /// Internal helper to complete Supabase auth after Google login

@@ -1,11 +1,11 @@
 {
-    "name": "route_alerts",
-    "short_name": "route_alerts",
+    "name": "haul_alerts",
+    "short_name": "haul_alerts",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Haul Alerts - A Flutter app for haul monitoring.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

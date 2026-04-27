@@ -52,7 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'ROUTE ALERTS',
+                    'HAUL ALERTS',
                     style: AppDesignSystem.displayLarge.copyWith(
                       color: AppDesignSystem.primary,
                       letterSpacing: 4.0,
