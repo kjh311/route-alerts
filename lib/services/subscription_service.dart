@@ -1,4 +1,4 @@
-import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import '../core/constants.dart';
@@ -12,17 +12,23 @@ class SubscriptionService {
   Future<void> init() async {
     await Purchases.setLogLevel(LogLevel.debug);
 
-    PurchasesConfiguration configuration;
-    if (Platform.isAndroid) {
-      configuration = PurchasesConfiguration(AppConstants.googleApiKey);
-    } else if (Platform.isIOS) {
-      configuration = PurchasesConfiguration(AppConstants.appleApiKey);
-    } else {
-      // Handle other platforms if necessary
+    PurchasesConfiguration? configuration;
+    
+    if (kIsWeb) {
+      debugPrint('DEBUG: RevenueCat initialization skipped on Web');
       return;
     }
 
-    await Purchases.configure(configuration);
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      configuration = PurchasesConfiguration(AppConstants.googleApiKey);
+    } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+      configuration = PurchasesConfiguration(AppConstants.appleApiKey);
+    }
+
+    if (configuration != null) {
+      await Purchases.configure(configuration);
+    }
+
   }
 
   /// Check if the user has an active 'pro_alerts' entitlement

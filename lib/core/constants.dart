@@ -7,4 +7,5 @@ class AppConstants {
 
   static String get supabaseUrl => dotenv.get('SUPABASE_URL', fallback: '');
   static String get supabaseAnonKey => dotenv.get('SUPABASE_ANON_KEY', fallback: '');
+  static String get googleWebClientId => dotenv.get('GOOGLE_WEB_CLIENT_ID', fallback: '');
 }
