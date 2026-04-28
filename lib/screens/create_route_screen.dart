@@ -402,19 +402,29 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
 
     final startTimeStr = '${_startTime.hour.toString().padLeft(2, '0')}:${_startTime.minute.toString().padLeft(2, '0')}:00';
 
+    final departureTime = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+      _startTime.hour,
+      _startTime.minute,
+    );
+
     final route = RouteModel(
+      id: '', // Supabase generates UUID
       userId: userId,
-      startLocation: _startController.text,
-      endLocation: _endController.text,
-      checkPoints: [
+      originName: _startController.text,
+      destinationName: _endController.text,
+      departureTime: departureTime,
+      alertLeadMinutes: _alertLeadTime,
+      waypoints: [
         {'name': _startController.text, 'lat': _startPrediction?.lat, 'lng': _startPrediction?.lng},
         {'name': _endController.text, 'lat': _endPrediction?.lat, 'lng': _endPrediction?.lng},
       ],
-      shiftStartTime: startTimeStr,
-      shiftDuration: _duration.toInt(),
-      estimatedDistance: 472.0,
-      estimatedDurationMinutes: 465, // 7h 45m
-      alertLeadTimeMinutes: _alertLeadTime,
+      routePolyline: '', // TODO: Populate from Google Directions API
+      delayMinutes: 0,
+      weatherCondition: 'Clear',
+      updatedAt: DateTime.now(),
     );
 
     context.read<RouteCubit>().saveRoute(route);
