@@ -1,7 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class RouteModel {
-  final String id;
+  final String? id;
   final String userId;
   final String originName;
   final String destinationName;
@@ -11,10 +11,11 @@ class RouteModel {
   final String routePolyline;
   final int delayMinutes;
   final String weatherCondition;
-  final DateTime updatedAt;
+  final DateTime? updatedAt;
+  final DateTime? createdAt;
 
   RouteModel({
-    required this.id,
+    this.id,
     required this.userId,
     required this.originName,
     required this.destinationName,
@@ -22,14 +23,15 @@ class RouteModel {
     required this.alertLeadMinutes,
     required this.waypoints,
     required this.routePolyline,
-    required this.delayMinutes,
-    required this.weatherCondition,
-    required this.updatedAt,
+    this.delayMinutes = 0,
+    this.weatherCondition = 'Clear',
+    this.updatedAt,
+    this.createdAt,
   });
 
   factory RouteModel.fromJson(Map<String, dynamic> json) {
     return RouteModel(
-      id: json['id'] as String,
+      id: json['id'] as String?,
       userId: json['user_id'] as String,
       originName: json['origin_name'] as String,
       destinationName: json['destination_name'] as String,
@@ -39,13 +41,14 @@ class RouteModel {
       routePolyline: json['route_polyline'] as String,
       delayMinutes: json['delay_minutes'] as int,
       weatherCondition: json['weather_condition'] as String,
-      updatedAt: DateTime.parse(json['updated_at'] as String),
+      updatedAt: json['updated_at'] != null ? DateTime.parse(json['updated_at'] as String) : null,
+      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at'] as String) : null,
     );
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
+  /// Use this for Database Inserts/Updates
+  Map<String, dynamic> toMap() {
+    final map = {
       'user_id': userId,
       'origin_name': originName,
       'destination_name': destinationName,
@@ -55,7 +58,13 @@ class RouteModel {
       'route_polyline': routePolyline,
       'delay_minutes': delayMinutes,
       'weather_condition': weatherCondition,
-      'updated_at': updatedAt.toIso8601String(),
     };
+    
+    // Include ID only if it exists (for updates)
+    if (id != null && id!.isNotEmpty) {
+      map['id'] = id!;
+    }
+    
+    return map;
   }
 }

@@ -563,7 +563,6 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
     );
 
     final route = RouteModel(
-      id: '', // Supabase generates UUID
       userId: userId,
       originName: _startController.text,
       destinationName: _endController.text,
@@ -571,9 +570,6 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       alertLeadMinutes: _alertLeadTime,
       waypoints: _generatedWaypoints,
       routePolyline: _encodedPolyline,
-      delayMinutes: 0,
-      weatherCondition: 'Clear',
-      updatedAt: DateTime.now(),
     );
 
     context.read<RouteCubit>().saveRoute(route);

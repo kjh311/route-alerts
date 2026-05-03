@@ -25,11 +25,22 @@ class RouteCubit extends Cubit<RouteState> {
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
-        emit(RouteFailure('User not authenticated'));
+        emit(RouteFailure('User not authenticated. Please log in.'));
         return;
       }
 
-      await _supabase.from('routes').insert(route.toJson());
+      // Ensure the model has the correct user_id from the session
+      final routeWithUser = RouteModel(
+        userId: userId,
+        originName: route.originName,
+        destinationName: route.destinationName,
+        departureTime: route.departureTime,
+        alertLeadMinutes: route.alertLeadMinutes,
+        waypoints: route.waypoints,
+        routePolyline: route.routePolyline,
+      );
+
+      await _supabase.from('routes').insert(routeWithUser.toMap());
 
       emit(RouteSuccess());
     } catch (e) {
