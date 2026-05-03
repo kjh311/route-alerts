@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:google_polyline_algorithm/google_polyline_algorithm.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/design_system.dart';
 import '../logic/route_cubit.dart';
 import '../models/route_model.dart';
 import '../core/constants.dart';
 import '../widgets/location_search_field.dart';
+import '../services/maps_service.dart';
 
 class CreateRouteScreen extends StatefulWidget {
   const CreateRouteScreen({super.key});
@@ -17,15 +20,24 @@ class CreateRouteScreen extends StatefulWidget {
 class _CreateRouteScreenState extends State<CreateRouteScreen> {
   final TextEditingController _startController = TextEditingController();
   final TextEditingController _endController = TextEditingController();
+  final MapsService _mapsService = MapsService();
   
   Map<String, dynamic>? _startData;
   Map<String, dynamic>? _endData;
 
+  // Map related state
+  GoogleMapController? _mapController;
+  final Set<Marker> _markers = {};
+  final Set<Polyline> _polylines = {};
+  List<Map<String, dynamic>> _generatedWaypoints = [];
+  String _encodedPolyline = '';
+  int _totalDistanceMiles = 0;
+  int _totalDurationMinutes = 0;
+  bool _isGeneratingRoute = false;
+
   TimeOfDay _startTime = const TimeOfDay(hour: 6, minute: 0);
   double _duration = 11.5;
   int _alertLeadTime = 30;
-
-  final List<String> _stops = ['Chicago, IL', 'Des Moines, IA', 'Omaha, NE'];
 
   @override
   Widget build(BuildContext context) {
@@ -78,9 +90,7 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                     iconColor: AppDesignSystem.secondary,
                     hintText: 'Enter origin city or terminal',
                     onSelected: (desc, lat, lng) {
-                      setState(() {
-                        _startData = {'description': desc, 'lat': lat, 'lng': lng};
-                      });
+                      _handleLocationSelection(true, desc, lat, lng);
                     },
                   ),
                 ),
@@ -94,16 +104,17 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                     iconColor: AppDesignSystem.primary,
                     hintText: 'Enter destination city or port',
                     onSelected: (desc, lat, lng) {
-                      setState(() {
-                        _endData = {'description': desc, 'lat': lat, 'lng': lng};
-                      });
+                      _handleLocationSelection(false, desc, lat, lng);
                     },
                   ),
                 ),
                 const SizedBox(height: AppDesignSystem.gutter),
 
                 // Map Preview
-                _buildMapPreview(),
+                if (_isGeneratingRoute)
+                   _buildLoadingBento()
+                else
+                   _buildMapPreview(),
                 const SizedBox(height: AppDesignSystem.gutter),
 
                 // Time and Duration
@@ -197,54 +208,63 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                 // Route Points List
                 _buildBentoCard(
                   label: 'Route Points',
-                  headerAction: TextButton.icon(
-                    onPressed: () {},
-                    icon: const Icon(Icons.add_circle, size: 18),
-                    label: const Text('ADD STOP'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppDesignSystem.secondary,
-                      textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                    ),
-                  ),
-                  child: Column(
-                    children: _stops.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final stop = entry.value;
-                      final isFirst = index == 0;
-                      final isLast = index == _stops.length - 1;
-                      
-                      Color accentColor = AppDesignSystem.outline;
-                      IconData icon = Icons.more_vert;
-                      if (isFirst) {
-                        accentColor = AppDesignSystem.secondary;
-                        icon = Icons.location_on;
-                      } else if (isLast) {
-                        accentColor = AppDesignSystem.primary;
-                        icon = Icons.flag;
-                      }
+                  headerAction: _generatedWaypoints.isNotEmpty 
+                    ? Text('${_generatedWaypoints.length} STOPS FOUND', style: const TextStyle(color: AppDesignSystem.outline, fontSize: 10, fontWeight: FontWeight.bold))
+                    : null,
+                  child: _generatedWaypoints.isEmpty 
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 20),
+                        child: Center(child: Text('Enter origin and destination to generate path', style: TextStyle(color: Colors.grey))),
+                      )
+                    : Column(
+                        children: _generatedWaypoints.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final wp = entry.value;
+                          final isFirst = index == 0;
+                          final isLast = index == _generatedWaypoints.length - 1;
+                          
+                          Color accentColor = AppDesignSystem.outline;
+                          IconData icon = Icons.circle;
+                          if (isFirst) {
+                            accentColor = AppDesignSystem.secondary;
+                            icon = Icons.location_on;
+                          } else if (isLast) {
+                            accentColor = AppDesignSystem.primary;
+                            icon = Icons.flag;
+                          }
 
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8.0),
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: AppDesignSystem.surfaceContainerHigh,
-                            borderRadius: BorderRadius.circular(AppDesignSystem.radiusDefault),
-                            border: Border(left: BorderSide(color: accentColor, width: 4)),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(icon, color: accentColor),
-                              const SizedBox(width: 12),
-                              Text(stop, style: AppDesignSystem.bodyLarge),
-                              const Spacer(),
-                              const Icon(Icons.close, color: Colors.grey, size: 20),
-                            ],
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8.0),
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: AppDesignSystem.surfaceContainerHigh,
+                                borderRadius: BorderRadius.circular(AppDesignSystem.radiusDefault),
+                                border: Border(left: BorderSide(color: accentColor, width: 4)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(icon, color: accentColor, size: 20),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(wp['name'], style: AppDesignSystem.bodyLarge),
+                                        if (!isFirst)
+                                          Text('${wp['distance_from_origin_miles']} miles from origin', 
+                                            style: TextStyle(fontSize: 10, color: AppDesignSystem.outline.withOpacity(0.8))),
+                                      ],
+                                    ),
+                                  ),
+                                  if (!isFirst && !isLast)
+                                    const Icon(Icons.close, color: Colors.grey, size: 16),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
                 ),
                 
                 const SizedBox(height: 32),
@@ -316,66 +336,191 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
     return AspectRatio(
       aspectRatio: 16 / 9,
       child: Container(
-      decoration: BoxDecoration(
-        color: AppDesignSystem.surfaceContainer,
-        borderRadius: BorderRadius.circular(AppDesignSystem.radiusLarge),
-        border: Border.all(color: AppDesignSystem.outline.withOpacity(0.2)),
-        image: const DecorationImage(
-          image: NetworkImage('https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&q=80&w=1000'), // Placeholder for map
-          fit: BoxFit.cover,
-          opacity: 0.8,
+        decoration: BoxDecoration(
+          color: AppDesignSystem.surfaceContainer,
+          borderRadius: BorderRadius.circular(AppDesignSystem.radiusLarge),
+          border: Border.all(color: AppDesignSystem.outline.withOpacity(0.2)),
         ),
-      ),
-      child: Stack(
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.transparent, AppDesignSystem.background.withOpacity(0.8)],
-              ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          children: [
+            GoogleMap(
+              initialCameraPosition: const CameraPosition(target: LatLng(39.8283, -98.5795), zoom: 3),
+              onMapCreated: (controller) {
+                _mapController = controller;
+                // You can set map style here if needed: controller.setMapStyle(_darkMapStyle);
+              },
+              markers: _markers,
+              polylines: _polylines,
+              myLocationButtonEnabled: false,
+              zoomControlsEnabled: false,
             ),
-          ),
-          Positioned(
-            bottom: 16,
-            left: 16,
-            right: 16,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(AppDesignSystem.radiusDefault),
-              child: BackdropFilter(
-                filter: ColorFilter.mode(Colors.black.withOpacity(0.5), BlendMode.darken),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  color: AppDesignSystem.surfaceContainerHigh.withOpacity(0.9),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+            if (_generatedWaypoints.isNotEmpty)
+              Positioned(
+                bottom: 12,
+                left: 12,
+                right: 12,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(AppDesignSystem.radiusDefault),
+                  child: BackdropFilter(
+                    filter: ColorFilter.mode(Colors.black.withOpacity(0.5), BlendMode.darken),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      color: AppDesignSystem.surfaceContainerHigh.withOpacity(0.9),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Estimated Distance', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppDesignSystem.onSurface)),
-                          Text('472 mi', style: AppDesignSystem.displayLarge.copyWith(color: AppDesignSystem.primary, height: 1)),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text('Total Distance', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppDesignSystem.onSurface)),
+                              Text('$_totalDistanceMiles mi', style: AppDesignSystem.headlineLarge.copyWith(color: AppDesignSystem.primary, height: 1)),
+                            ],
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text('Est. Transit', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppDesignSystem.onSurface)),
+                              Text('${_totalDurationMinutes ~/ 60}h ${_totalDurationMinutes % 60}m', style: AppDesignSystem.headlineMedium.copyWith(color: AppDesignSystem.secondary, height: 1)),
+                            ],
+                          ),
                         ],
                       ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          const Text('Transit Time', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppDesignSystem.onSurface)),
-                          Text('7h 45m', style: AppDesignSystem.headlineLarge.copyWith(color: AppDesignSystem.secondary)),
-                        ],
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }
+
+  Widget _buildLoadingBento() {
+    return AspectRatio(
+      aspectRatio: 16 / 9,
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppDesignSystem.surfaceContainer,
+          borderRadius: BorderRadius.circular(AppDesignSystem.radiusLarge),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(color: AppDesignSystem.primary),
+            const SizedBox(height: 16),
+            Text('OPTIMIZING HAUL ROUTE...', style: AppDesignSystem.labelBold.copyWith(color: AppDesignSystem.outline)),
+            const SizedBox(height: 4),
+            const Text('Sampling points and identifying weather stations', style: TextStyle(fontSize: 10, color: AppDesignSystem.outline)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _handleLocationSelection(bool isStart, String desc, double? lat, double? lng) {
+    setState(() {
+      if (isStart) {
+        _startData = {'description': desc, 'lat': lat, 'lng': lng};
+      } else {
+        _endData = {'description': desc, 'lat': lat, 'lng': lng};
+      }
+    });
+
+    if (_startData != null && _endData != null) {
+      _generateRoute();
+    }
+  }
+
+  Future<void> _generateRoute() async {
+    if (_startData?['lat'] == null || _endData?['lat'] == null) return;
+
+    setState(() => _isGeneratingRoute = true);
+
+    try {
+      final result = await _mapsService.generateIntelligentWaypoints(
+        startLat: _startData!['lat'],
+        startLng: _startData!['lng'],
+        endLat: _endData!['lat'],
+        endLng: _endData!['lng'],
+      );
+
+      _encodedPolyline = result['polyline'];
+      _generatedWaypoints = List<Map<String, dynamic>>.from(result['waypoints']);
+      _totalDistanceMiles = result['total_distance_miles'];
+      _totalDurationMinutes = result['total_duration_minutes'];
+
+      // Update Markers
+      _markers.clear();
+      for (var wp in _generatedWaypoints) {
+        _markers.add(
+          Marker(
+            markerId: MarkerId(wp['name']),
+            position: LatLng(wp['lat'], wp['lng']),
+            infoWindow: InfoWindow(title: wp['name'], snippet: '${wp['distance_from_origin_miles']} mi from start'),
+          ),
+        );
+      }
+
+      // Update Polyline
+      _polylines.clear();
+      // Decode for polyline widget
+      final List<LatLng> polyPoints = _decodeEncodedPolyline(_encodedPolyline);
+      _polylines.add(
+        Polyline(
+          polylineId: const PolylineId('route'),
+          points: polyPoints,
+          color: AppDesignSystem.primary,
+          width: 5,
+        ),
+      );
+
+      setState(() => _isGeneratingRoute = false);
+      
+      // Fit Bounds
+      Future.delayed(const Duration(milliseconds: 500), () => _fitBounds(polyPoints));
+
+    } catch (e) {
+      setState(() => _isGeneratingRoute = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Route generation failed: $e')));
+    }
+  }
+
+  List<LatLng> _decodeEncodedPolyline(String encoded) {
+    // Re-use logic or import from utility
+    final List<List<num>> coords = decodePolyline(encoded);
+    return coords.map((c) => LatLng(c[0].toDouble(), c[1].toDouble())).toList();
+  }
+
+  void _fitBounds(List<LatLng> points) {
+    if (_mapController == null || points.isEmpty) return;
+
+    double minLat = points.first.latitude;
+    double maxLat = points.first.latitude;
+    double minLng = points.first.longitude;
+    double maxLng = points.first.longitude;
+
+    for (var p in points) {
+      if (p.latitude < minLat) minLat = p.latitude;
+      if (p.latitude > maxLat) maxLat = p.latitude;
+      if (p.longitude < minLng) minLng = p.longitude;
+      if (p.longitude > maxLng) maxLng = p.longitude;
+    }
+
+    _mapController!.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat, minLng),
+          northeast: LatLng(maxLat, maxLng),
+        ),
+        50.0,
+      ),
+    );
+  }
+
+  final String _darkMapStyle = '''[]'''; // Placeholder for dark mode JSON
 
 
   Future<void> _selectTime(BuildContext context) async {
@@ -414,11 +559,8 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       destinationName: _endController.text,
       departureTime: departureTime,
       alertLeadMinutes: _alertLeadTime,
-      waypoints: [
-        {'name': _startController.text, 'lat': _startData?['lat'], 'lng': _startData?['lng']},
-        {'name': _endController.text, 'lat': _endData?['lat'], 'lng': _endData?['lng']},
-      ],
-      routePolyline: '', // TODO: Populate from Google Directions API
+      waypoints: _generatedWaypoints,
+      routePolyline: _encodedPolyline,
       delayMinutes: 0,
       weatherCondition: 'Clear',
       updatedAt: DateTime.now(),
