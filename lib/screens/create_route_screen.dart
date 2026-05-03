@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:google_places_flutter/google_places_flutter.dart';
-import 'package:google_places_flutter/model/prediction.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/design_system.dart';
 import '../logic/route_cubit.dart';
 import '../models/route_model.dart';
 import '../core/constants.dart';
+import '../widgets/location_search_field.dart';
 
 class CreateRouteScreen extends StatefulWidget {
   const CreateRouteScreen({super.key});
@@ -19,8 +18,8 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
   final TextEditingController _startController = TextEditingController();
   final TextEditingController _endController = TextEditingController();
   
-  Prediction? _startPrediction;
-  Prediction? _endPrediction;
+  Map<String, dynamic>? _startData;
+  Map<String, dynamic>? _endData;
 
   TimeOfDay _startTime = const TimeOfDay(hour: 6, minute: 0);
   double _duration = 11.5;
@@ -72,15 +71,15 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                 // Bento Input Section
                 _buildBentoCard(
                   label: 'Starting Point',
-                  child: GooglePlaceAutoCompleteTextField(
-                    textEditingController: _startController,
-                    googleAPIKey: AppConstants.googleApiKey,
-                    inputDecoration: _inputDecoration('Enter origin city or terminal', Icons.location_on, AppDesignSystem.secondary),
-                    debounceTime: 800,
-                    itemClick: (Prediction prediction) {
+                  child: LocationSearchField(
+                    controller: _startController,
+                    label: 'Origin',
+                    icon: Icons.location_on,
+                    iconColor: AppDesignSystem.secondary,
+                    hintText: 'Enter origin city or terminal',
+                    onSelected: (desc, lat, lng) {
                       setState(() {
-                        _startPrediction = prediction;
-                        _startController.text = prediction.description ?? '';
+                        _startData = {'description': desc, 'lat': lat, 'lng': lng};
                       });
                     },
                   ),
@@ -88,15 +87,15 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                 const SizedBox(height: AppDesignSystem.stackGap),
                 _buildBentoCard(
                   label: 'Destination',
-                  child: GooglePlaceAutoCompleteTextField(
-                    textEditingController: _endController,
-                    googleAPIKey: AppConstants.googleApiKey,
-                    inputDecoration: _inputDecoration('Enter destination city or port', Icons.flag, AppDesignSystem.primary),
-                    debounceTime: 800,
-                    itemClick: (Prediction prediction) {
+                  child: LocationSearchField(
+                    controller: _endController,
+                    label: 'Destination',
+                    icon: Icons.flag,
+                    iconColor: AppDesignSystem.primary,
+                    hintText: 'Enter destination city or port',
+                    onSelected: (desc, lat, lng) {
                       setState(() {
-                        _endPrediction = prediction;
-                        _endController.text = prediction.description ?? '';
+                        _endData = {'description': desc, 'lat': lat, 'lng': lng};
                       });
                     },
                   ),
@@ -159,9 +158,9 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                 ),
                 const SizedBox(height: AppDesignSystem.gutter),
 
-                // Alert Notification
+                // Alert Lead Time
                 _buildBentoCard(
-                  label: 'Alert Notification',
+                  label: 'Alert Lead Time',
                   child: Container(
                     height: AppDesignSystem.touchTargetMin,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -169,12 +168,10 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                       color: AppDesignSystem.surfaceContainerLow,
                       borderRadius: BorderRadius.circular(AppDesignSystem.radiusSmall),
                     ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.notifications_active, color: Colors.orange),
-                        const SizedBox(width: 12),
-                        const Text('Alert Lead Time', style: TextStyle(fontWeight: FontWeight.w500)),
-                        const Spacer(),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.notifications_active, color: Colors.orange),
+                          const Spacer(),
                         DropdownButton<int>(
                           value: _alertLeadTime,
                           underline: const SizedBox(),
@@ -418,8 +415,8 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       departureTime: departureTime,
       alertLeadMinutes: _alertLeadTime,
       waypoints: [
-        {'name': _startController.text, 'lat': _startPrediction?.lat, 'lng': _startPrediction?.lng},
-        {'name': _endController.text, 'lat': _endPrediction?.lat, 'lng': _endPrediction?.lng},
+        {'name': _startController.text, 'lat': _startData?['lat'], 'lng': _startData?['lng']},
+        {'name': _endController.text, 'lat': _endData?['lat'], 'lng': _endData?['lng']},
       ],
       routePolyline: '', // TODO: Populate from Google Directions API
       delayMinutes: 0,
