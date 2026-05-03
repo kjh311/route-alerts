@@ -40,23 +40,33 @@ class MapsService {
     final List<Map<String, dynamic>> waypoints = [];
     final Set<String> seenCities = {};
 
-    for (var i = 0; i < sampledPoints.length; i++) {
-      final point = sampledPoints[i];
-      final cityData = await _getCityFromCoords(point['lat'], point['lng']);
-      
+    // Helper to add a waypoint if unique
+    Future<void> addWaypoint(double lat, double lng, double distMeters) async {
+      final cityData = await _getCityFromCoords(lat, lng);
       if (cityData != null) {
         final cityName = cityData['name'];
         if (!seenCities.contains(cityName)) {
           waypoints.add({
             'name': cityName,
-            'lat': point['lat'],
-            'lng': point['lng'],
-            'distance_from_origin_miles': (point['distance_from_start'] / 1609.34).round(),
+            'lat': lat,
+            'lng': lng,
+            'distance_from_origin_miles': (distMeters / 1609.34).round(),
           });
           seenCities.add(cityName);
         }
       }
     }
+
+    // Explicitly add Start
+    await addWaypoint(startLat, startLng, 0.0);
+
+    // Add In-between points
+    for (var point in sampledPoints) {
+      await addWaypoint(point['lat'], point['lng'], point['distance_from_start']);
+    }
+
+    // Explicitly add End
+    await addWaypoint(endLat, endLng, totalDistanceMeters);
 
     return {
       'waypoints': waypoints,
@@ -158,17 +168,17 @@ class MapsService {
         geocoder.geocode({ location: latlng }, function(results, status) {
           if (status === 'OK' && results[0]) {
             var cityName = '';
+            var stateCode = '';
             var components = results[0].address_components;
             for (var i = 0; i < components.length; i++) {
               var types = components[i].types;
               if (types.indexOf('locality') !== -1) {
                 cityName = components[i].long_name;
-                break;
-              } else if (types.indexOf('administrative_area_level_2') !== -1) {
-                cityName = components[i].long_name;
+              } else if (types.indexOf('administrative_area_level_1') !== -1) {
+                stateCode = components[i].short_name;
               }
             }
-            window.onGoogleGeocodeSuccess(cityName);
+            window.onGoogleGeocodeSuccess(cityName + (stateCode ? ', ' + stateCode : ''));
           } else {
             window.onGoogleGeocodeFailure(status);
           }
@@ -176,8 +186,8 @@ class MapsService {
       })($lat, $lng)
     """]);
 
-    js.context['onGoogleGeocodeSuccess'] = (String cityName) {
-      completer.complete(cityName.isNotEmpty ? {'name': cityName} : null);
+    js.context['onGoogleGeocodeSuccess'] = (String cityState) {
+      completer.complete(cityState.isNotEmpty ? {'name': cityState} : null);
     };
 
     js.context['onGoogleGeocodeFailure'] = (String status) {
@@ -193,25 +203,26 @@ class MapsService {
       queryParameters: {
         'latlng': '$lat,$lng',
         'key': _apiKey,
-        'result_type': 'locality|sublocality|administrative_area_level_2',
+        'result_type': 'locality|administrative_area_level_1',
       },
     );
 
     if (response.data['status'] == 'OK' && (response.data['results'] as List).isNotEmpty) {
       final result = response.data['results'][0];
       String cityName = '';
+      String stateCode = '';
       
       for (var component in result['address_components']) {
         final List types = component['types'];
         if (types.contains('locality')) {
           cityName = component['long_name'];
-          break;
-        } else if (types.contains('administrative_area_level_2')) {
-          cityName = component['long_name'];
+        } else if (types.contains('administrative_area_level_1')) {
+          stateCode = component['short_name'];
         }
       }
       
-      return cityName.isNotEmpty ? {'name': cityName} : null;
+      final label = cityName.isNotEmpty ? '$cityName${stateCode.isNotEmpty ? ', $stateCode' : ''}' : '';
+      return label.isNotEmpty ? {'name': label} : null;
     }
     return null;
   }

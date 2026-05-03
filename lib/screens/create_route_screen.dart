@@ -110,12 +110,70 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                 ),
                 const SizedBox(height: AppDesignSystem.gutter),
 
-                // Map Preview
-                if (_isGeneratingRoute)
-                   _buildLoadingBento()
-                else
-                   _buildMapPreview(),
-                const SizedBox(height: AppDesignSystem.gutter),
+                // Map Preview & Route Points (Hidden until both endpoints are set)
+                if (_startData != null && _endData != null) ...[
+                  if (_isGeneratingRoute)
+                    _buildLoadingBento()
+                  else
+                    _buildMapPreview(),
+                  const SizedBox(height: AppDesignSystem.gutter),
+
+                  // Route Points List (Hidden until data is available)
+                  if (_generatedWaypoints.isNotEmpty) ...[
+                    _buildBentoCard(
+                      label: 'Route Points',
+                      headerAction: Text('${_generatedWaypoints.length} STOPS FOUND', style: const TextStyle(color: AppDesignSystem.outline, fontSize: 10, fontWeight: FontWeight.bold)),
+                      child: Column(
+                        children: _generatedWaypoints.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final wp = entry.value;
+                          final isFirst = index == 0;
+                          final isLast = index == _generatedWaypoints.length - 1;
+                          
+                          Color accentColor = AppDesignSystem.outline;
+                          IconData icon = Icons.circle;
+                          if (isFirst) {
+                            accentColor = AppDesignSystem.secondary;
+                            icon = Icons.location_on;
+                          } else if (isLast) {
+                            accentColor = AppDesignSystem.primary;
+                            icon = Icons.flag;
+                          }
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8.0),
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: AppDesignSystem.surfaceContainerHigh,
+                                borderRadius: BorderRadius.circular(AppDesignSystem.radiusDefault),
+                                border: Border(left: BorderSide(color: accentColor, width: 4)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(icon, color: accentColor, size: 20),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(wp['name'], style: AppDesignSystem.bodyLarge),
+                                        if (!isFirst)
+                                          Text('${wp['distance_from_origin_miles']} miles from origin', 
+                                            style: TextStyle(fontSize: 10, color: AppDesignSystem.outline.withOpacity(0.8))),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    const SizedBox(height: AppDesignSystem.gutter),
+                  ],
+                ],
 
                 // Time and Duration
                 _buildBentoCard(
@@ -205,68 +263,6 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                 ),
                 const SizedBox(height: AppDesignSystem.gutter),
 
-                // Route Points List
-                _buildBentoCard(
-                  label: 'Route Points',
-                  headerAction: _generatedWaypoints.isNotEmpty 
-                    ? Text('${_generatedWaypoints.length} STOPS FOUND', style: const TextStyle(color: AppDesignSystem.outline, fontSize: 10, fontWeight: FontWeight.bold))
-                    : null,
-                  child: _generatedWaypoints.isEmpty 
-                    ? const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 20),
-                        child: Center(child: Text('Enter origin and destination to generate path', style: TextStyle(color: Colors.grey))),
-                      )
-                    : Column(
-                        children: _generatedWaypoints.asMap().entries.map((entry) {
-                          final index = entry.key;
-                          final wp = entry.value;
-                          final isFirst = index == 0;
-                          final isLast = index == _generatedWaypoints.length - 1;
-                          
-                          Color accentColor = AppDesignSystem.outline;
-                          IconData icon = Icons.circle;
-                          if (isFirst) {
-                            accentColor = AppDesignSystem.secondary;
-                            icon = Icons.location_on;
-                          } else if (isLast) {
-                            accentColor = AppDesignSystem.primary;
-                            icon = Icons.flag;
-                          }
-
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 8.0),
-                            child: Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: AppDesignSystem.surfaceContainerHigh,
-                                borderRadius: BorderRadius.circular(AppDesignSystem.radiusDefault),
-                                border: Border(left: BorderSide(color: accentColor, width: 4)),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(icon, color: accentColor, size: 20),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(wp['name'], style: AppDesignSystem.bodyLarge),
-                                        if (!isFirst)
-                                          Text('${wp['distance_from_origin_miles']} miles from origin', 
-                                            style: TextStyle(fontSize: 10, color: AppDesignSystem.outline.withOpacity(0.8))),
-                                      ],
-                                    ),
-                                  ),
-                                  if (!isFirst && !isLast)
-                                    const Icon(Icons.close, color: Colors.grey, size: 16),
-                                ],
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                ),
-                
                 const SizedBox(height: 32),
                 // Save Button
                 ElevatedButton(
@@ -494,30 +490,44 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
     return coords.map((c) => LatLng(c[0].toDouble(), c[1].toDouble())).toList();
   }
 
-  void _fitBounds(List<LatLng> points) {
-    if (_mapController == null || points.isEmpty) return;
+  void _fitBounds(List<LatLng> points) async {
+    if (points.isEmpty) return;
 
-    double minLat = points.first.latitude;
-    double maxLat = points.first.latitude;
-    double minLng = points.first.longitude;
-    double maxLng = points.first.longitude;
+    // Retry loop to wait for map controller and bounds readiness
+    for (int i = 0; i < 5; i++) {
+      if (_mapController != null) {
+        try {
+          LatLngBounds bounds;
+          if (points.length == 1) {
+            bounds = LatLngBounds(southwest: points.first, northeast: points.first);
+          } else {
+            double minLat = points.first.latitude;
+            double maxLat = points.first.latitude;
+            double minLng = points.first.longitude;
+            double maxLng = points.first.longitude;
 
-    for (var p in points) {
-      if (p.latitude < minLat) minLat = p.latitude;
-      if (p.latitude > maxLat) maxLat = p.latitude;
-      if (p.longitude < minLng) minLng = p.longitude;
-      if (p.longitude > maxLng) maxLng = p.longitude;
+            for (var p in points) {
+              if (p.latitude < minLat) minLat = p.latitude;
+              if (p.latitude > maxLat) maxLat = p.latitude;
+              if (p.longitude < minLng) minLng = p.longitude;
+              if (p.longitude > maxLng) maxLng = p.longitude;
+            }
+            bounds = LatLngBounds(
+              southwest: LatLng(minLat, minLng),
+              northeast: LatLng(maxLat, maxLng),
+            );
+          }
+
+          await _mapController!.animateCamera(
+            CameraUpdate.newLatLngBounds(bounds, 50.0),
+          );
+          return; // Success
+        } catch (e) {
+          debugPrint('DEBUG: fitBounds attempt ${i+1} failed: $e');
+        }
+      }
+      await Future.delayed(const Duration(milliseconds: 500));
     }
-
-    _mapController!.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(minLat, minLng),
-          northeast: LatLng(maxLat, maxLng),
-        ),
-        50.0,
-      ),
-    );
   }
 
   final String _darkMapStyle = '''[]'''; // Placeholder for dark mode JSON
