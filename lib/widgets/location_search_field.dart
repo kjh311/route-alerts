@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'dart:js' as js;
 import '../theme/design_system.dart';
 import '../core/constants.dart';
+import '../services/google_maps_loader.dart';
 
 /// A custom Location Search field that handles Web CORS by using the Native 
 /// Google Maps JS SDK and Mobile by making direct API calls.
@@ -74,40 +75,8 @@ class _LocationSearchFieldState extends State<LocationSearchField> {
     }
   }
 
-  /// Ensures the Google Maps JS SDK is loaded on Web
   Future<void> _ensureMapsLoaded() async {
-    if (!kIsWeb) return;
-    
-    // Check if google.maps is already defined
-    final bool isLoaded = js.context.hasProperty('google') && 
-                         (js.context['google'] as js.JsObject).hasProperty('maps');
-    
-    if (isLoaded) return;
-
-    final completer = Completer<void>();
-    final key = AppConstants.googleMapsApiKey;
-    
-    debugPrint('DEBUG: Loading Maps JS SDK dynamically with key...');
-    
-    js.context.callMethod('eval', ["""
-      (function(key) {
-        if (window.google && window.google.maps) return;
-        var script = document.createElement('script');
-        script.src = 'https://maps.googleapis.com/maps/api/js?key=' + key + '&libraries=places';
-        script.async = true;
-        script.defer = true;
-        script.onload = function() { window.onMapsLoaded(); };
-        document.head.appendChild(script);
-      })('$key')
-    """]);
-
-    js.context['onMapsLoaded'] = () {
-      completer.complete();
-    };
-
-    return completer.future.timeout(const Duration(seconds: 10), onTimeout: () {
-      debugPrint('DEBUG: Maps JS SDK load timed out');
-    });
+    await GoogleMapsLoader.ensureLoaded();
   }
 
   /// Web Search using Native Google Maps JS SDK (Bypasses CORS entirely)

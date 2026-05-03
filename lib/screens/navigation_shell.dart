@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/design_system.dart';
 import 'create_route_screen.dart';
+import 'my_routes_screen.dart';
 
 class NavigationShell extends StatefulWidget {
   const NavigationShell({super.key});
@@ -10,11 +11,11 @@ class NavigationShell extends StatefulWidget {
 }
 
 class _NavigationShellState extends State<NavigationShell> {
-  int _currentIndex = 0;
+  int _currentIndex = 1; // Default to My Routes per common app patterns for this task
 
   final List<Widget> _pages = [
     const PlaceholderScreen(title: 'Dashboard'),
-    const PlaceholderScreen(title: 'My Routes'),
+    const MyRoutesScreen(),
     const PlaceholderScreen(title: 'Profile'),
   ];
 

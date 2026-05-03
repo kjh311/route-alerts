@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -9,9 +10,11 @@ import '../models/route_model.dart';
 import '../core/constants.dart';
 import '../widgets/location_search_field.dart';
 import '../services/maps_service.dart';
+import '../services/google_maps_loader.dart';
 
 class CreateRouteScreen extends StatefulWidget {
-  const CreateRouteScreen({super.key});
+  final RouteModel? initialRoute;
+  const CreateRouteScreen({super.key, this.initialRoute});
 
   @override
   State<CreateRouteScreen> createState() => _CreateRouteScreenState();
@@ -34,13 +37,68 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
   int _totalDistanceMiles = 0;
   int _totalDurationMinutes = 0;
   bool _isGeneratingRoute = false;
+  bool _isMapsApiLoaded = !kIsWeb;
 
   TimeOfDay _startTime = const TimeOfDay(hour: 6, minute: 0);
   double _duration = 11.5;
   int _alertLeadTime = 30;
 
   @override
+  void initState() {
+    super.initState();
+    _initMaps();
+    if (widget.initialRoute != null) {
+      final route = widget.initialRoute!;
+      _startController.text = route.originName;
+      _endController.text = route.destinationName;
+      _startTime = TimeOfDay.fromDateTime(route.departureTime);
+      _alertLeadTime = route.alertLeadMinutes;
+      _generatedWaypoints = List<Map<String, dynamic>>.from(route.waypoints);
+      _encodedPolyline = route.routePolyline;
+      
+      // Setup map data
+      _startData = {'description': route.originName};
+      _endData = {'description': route.destinationName};
+      
+      // Initialize markers and polylines
+      final points = _decodeEncodedPolyline(_encodedPolyline);
+      _polylines.add(Polyline(
+        polylineId: const PolylineId('route'),
+        points: points,
+        color: AppDesignSystem.primary,
+        width: 6,
+      ));
+
+      for (var wp in _generatedWaypoints) {
+        _markers.add(Marker(
+          markerId: MarkerId(wp['name']),
+          position: LatLng(wp['lat'], wp['lng']),
+          infoWindow: InfoWindow(title: wp['name']),
+        ));
+      }
+
+      // Schedule fitBounds after map controller is ready
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _fitBounds(points);
+      });
+    }
+  }
+
+  Future<void> _initMaps() async {
+    if (kIsWeb) {
+      try {
+        await GoogleMapsLoader.ensureLoaded();
+        if (mounted) setState(() => _isMapsApiLoaded = true);
+      } catch (e) {
+        debugPrint('DEBUG: Failed to load Maps API: $e');
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final isViewing = widget.initialRoute != null;
+
     return BlocProvider(
       create: (context) => RouteCubit(),
       child: BlocConsumer<RouteCubit, RouteState>(
@@ -63,7 +121,7 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                 onPressed: () => Navigator.pop(context),
                 icon: const Icon(Icons.arrow_back, color: AppDesignSystem.primary),
               ),
-              title: const Text('CREATE ROUTE'),
+              title: Text(isViewing ? 'VIEW ROUTE' : 'CREATE ROUTE'),
               actions: [
                 IconButton(
                   onPressed: () {},
@@ -76,8 +134,8 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
               children: [
                 const SizedBox(height: 24),
                 // Header
-                Text('New Dedicated Route', style: AppDesignSystem.headlineLarge.copyWith(color: AppDesignSystem.primaryVariant)),
-                Text('Configure your long-haul parameters', style: AppDesignSystem.bodyMedium.copyWith(color: AppDesignSystem.onSurfaceVariant)),
+                Text(isViewing ? 'Saved Dedicated Route' : 'New Dedicated Route', style: AppDesignSystem.headlineLarge.copyWith(color: AppDesignSystem.primaryVariant)),
+                Text(isViewing ? 'Monitoring parameters for this haul' : 'Configure your long-haul parameters', style: AppDesignSystem.bodyMedium.copyWith(color: AppDesignSystem.onSurfaceVariant)),
                 const SizedBox(height: AppDesignSystem.gutter),
 
                 // Bento Input Section
@@ -264,26 +322,27 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                 const SizedBox(height: AppDesignSystem.gutter),
 
                 const SizedBox(height: 32),
-                // Save Button
-                ElevatedButton(
-                  onPressed: state is RouteLoading ? null : () => _saveRoute(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppDesignSystem.primaryVariant,
-                    minimumSize: const Size.fromHeight(64),
+                // Save Button (Hidden in View mode)
+                if (!isViewing)
+                  ElevatedButton(
+                    onPressed: state is RouteLoading ? null : () => _saveRoute(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppDesignSystem.primaryVariant,
+                      minimumSize: const Size.fromHeight(64),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (state is RouteLoading)
+                          const CircularProgressIndicator(color: AppDesignSystem.onPrimary)
+                        else ...[
+                          const Icon(Icons.save),
+                          const SizedBox(width: 12),
+                          const Text('SAVE & ACTIVATE ROUTE'),
+                        ]
+                      ],
+                    ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (state is RouteLoading)
-                        const CircularProgressIndicator(color: AppDesignSystem.onPrimary)
-                      else ...[
-                        const Icon(Icons.save),
-                        const SizedBox(width: 12),
-                        const Text('SAVE & ACTIVATE ROUTE'),
-                      ]
-                    ],
-                  ),
-                ),
                 const SizedBox(height: 48),
               ],
             ),
@@ -340,17 +399,20 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
         clipBehavior: Clip.antiAlias,
         child: Stack(
           children: [
-            GoogleMap(
-              initialCameraPosition: const CameraPosition(target: LatLng(39.8283, -98.5795), zoom: 3),
-              onMapCreated: (controller) {
-                _mapController = controller;
-                // You can set map style here if needed: controller.setMapStyle(_darkMapStyle);
-              },
-              markers: _markers,
-              polylines: _polylines,
-              myLocationButtonEnabled: false,
-              zoomControlsEnabled: false,
-            ),
+            if (_isMapsApiLoaded)
+              GoogleMap(
+                initialCameraPosition: const CameraPosition(target: LatLng(39.8283, -98.5795), zoom: 3),
+                onMapCreated: (controller) {
+                  _mapController = controller;
+                  // You can set map style here if needed: controller.setMapStyle(_darkMapStyle);
+                },
+                markers: _markers,
+                polylines: _polylines,
+                myLocationButtonEnabled: false,
+                zoomControlsEnabled: false,
+              )
+            else
+              const Center(child: CircularProgressIndicator(color: AppDesignSystem.primary)),
             if (_generatedWaypoints.isNotEmpty)
               Positioned(
                 bottom: 12,

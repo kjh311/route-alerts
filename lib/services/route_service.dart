@@ -11,7 +11,7 @@ class RouteService {
         .from('routes')
         .select()
         .eq('user_id', userId)
-        .order('updated_at', ascending: false);
+        .order('created_at', ascending: false);
 
     return (response as List<dynamic>)
         .map((json) => RouteModel.fromJson(json as Map<String, dynamic>))
