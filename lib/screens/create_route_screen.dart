@@ -11,6 +11,7 @@ import '../core/constants.dart';
 import '../widgets/location_search_field.dart';
 import '../services/maps_service.dart';
 import '../services/google_maps_loader.dart';
+import '../services/weather_service.dart';
 
 class CreateRouteScreen extends StatefulWidget {
   final RouteModel? initialRoute;
@@ -24,6 +25,7 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
   final TextEditingController _startController = TextEditingController();
   final TextEditingController _endController = TextEditingController();
   final MapsService _mapsService = MapsService();
+  final WeatherService _weatherService = WeatherService();
   
   Map<String, dynamic>? _startData;
   Map<String, dynamic>? _endData;
@@ -45,6 +47,9 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
   List<String> _selectedDays = [];
 
   final List<String> _daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  
+  Map<String, dynamic>? _weatherAudit;
+  bool _isAuditingWeather = false;
 
   @override
   void initState() {
@@ -59,6 +64,7 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       _generatedWaypoints = List<Map<String, dynamic>>.from(route.waypoints);
       _encodedPolyline = route.routePolyline;
       _selectedDays = List<String>.from(route.drivingDays);
+      _weatherAudit = route.weatherCondition;
       
       // Setup map data
       _startData = {'description': route.originName};
@@ -73,13 +79,7 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
         width: 6,
       ));
 
-      for (var wp in _generatedWaypoints) {
-        _markers.add(Marker(
-          markerId: MarkerId(wp['name']),
-          position: LatLng(wp['lat'], wp['lng']),
-          infoWindow: InfoWindow(title: wp['name']),
-        ));
-      }
+      _updateMarkersWithHazards();
 
       // Schedule fitBounds after map controller is ready
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -136,6 +136,8 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
             body: ListView(
               padding: const EdgeInsets.symmetric(horizontal: AppDesignSystem.marginEdge),
               children: [
+                if (_weatherAudit != null && _weatherAudit!['status'] == 'Critical')
+                  _buildHazardBanner(),
                 const SizedBox(height: 24),
                 // Header
                 Text(isViewing ? 'Saved Dedicated Route' : 'New Dedicated Route', style: AppDesignSystem.headlineLarge.copyWith(color: AppDesignSystem.primaryVariant)),
@@ -229,9 +231,22 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                           final isFirst = index == 0;
                           final isLast = index == _generatedWaypoints.length - 1;
                           
+                          // Weather Audit Lookup
+                          final alert = (_weatherAudit?['alerts'] as List<dynamic>?)?.firstWhere(
+                            (a) => a['city'] == wp['name'],
+                            orElse: () => null,
+                          );
+                          final severity = alert?['severity'] ?? 'Clear';
+                          
                           Color accentColor = AppDesignSystem.outline;
                           IconData icon = Icons.circle;
-                          if (isFirst) {
+                          if (severity == 'Red') {
+                            accentColor = Colors.red;
+                            icon = Icons.warning_amber_rounded;
+                          } else if (severity == 'Yellow') {
+                            accentColor = Colors.orange;
+                            icon = Icons.info_outline;
+                          } else if (isFirst) {
                             accentColor = AppDesignSystem.secondary;
                             icon = Icons.location_on;
                           } else if (isLast) {
@@ -256,13 +271,29 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(wp['name'], style: AppDesignSystem.bodyLarge),
-                                        if (!isFirst)
-                                          Text('${wp['distance_from_origin_miles']} miles from origin', 
-                                            style: TextStyle(fontSize: 10, color: AppDesignSystem.outline.withOpacity(0.8))),
+                                        Text(wp['name'], style: AppDesignSystem.bodyLarge.copyWith(
+                                          fontWeight: severity != 'Clear' ? FontWeight.bold : FontWeight.normal,
+                                        )),
+                                        Row(
+                                          children: [
+                                            if (!isFirst)
+                                              Text('${wp['distance_from_origin_miles']} mi from origin', 
+                                                style: TextStyle(fontSize: 10, color: AppDesignSystem.outline.withOpacity(0.8))),
+                                            if (!isFirst && severity != 'Clear') ...[
+                                              const SizedBox(width: 8),
+                                              const Text('•', style: TextStyle(color: AppDesignSystem.outline, fontSize: 10)),
+                                              const SizedBox(width: 8),
+                                            ],
+                                            if (severity != 'Clear')
+                                              Text(alert!['hazard'], 
+                                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: accentColor)),
+                                          ],
+                                        ),
                                       ],
                                     ),
                                   ),
+                                  if (_isAuditingWeather && index == _generatedWaypoints.length - 1)
+                                    const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppDesignSystem.primary)),
                                 ],
                               ),
                             ),
@@ -581,6 +612,9 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       // Fit Bounds
       Future.delayed(const Duration(milliseconds: 500), () => _fitBounds(polyPoints));
 
+      // 4. Start Weather Audit
+      _auditWeather();
+
     } catch (e) {
       setState(() => _isGeneratingRoute = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Route generation failed: $e')));
@@ -633,6 +667,103 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
     }
   }
 
+  Future<void> _auditWeather() async {
+    if (_generatedWaypoints.isEmpty) return;
+    
+    setState(() => _isAuditingWeather = true);
+
+    final departureTime = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+      _startTime.hour,
+      _startTime.minute,
+    );
+
+    try {
+      final audit = await _weatherService.auditRouteWeather(
+        departureTime: departureTime,
+        waypoints: _generatedWaypoints,
+        totalDurationMinutes: _totalDurationMinutes,
+        totalDistanceMiles: _totalDistanceMiles,
+      );
+
+      setState(() {
+        _weatherAudit = audit;
+        _isAuditingWeather = false;
+        
+        // Update markers to reflect hazard levels
+        _updateMarkersWithHazards();
+      });
+    } catch (e) {
+      setState(() => _isAuditingWeather = false);
+      debugPrint('DEBUG: Weather Audit Error: $e');
+    }
+  }
+
+  void _updateMarkersWithHazards() {
+    if (_weatherAudit == null) return;
+
+    final alerts = _weatherAudit!['alerts'] as List<dynamic>;
+    final Set<Marker> newMarkers = {};
+
+    for (var wp in _generatedWaypoints) {
+      final alert = alerts.firstWhere(
+        (a) => a['city'] == wp['name'],
+        orElse: () => null,
+      );
+
+      final severity = alert?['severity'] ?? 'Clear';
+      double hue = BitmapDescriptor.hueBlue;
+      if (severity == 'Red') hue = BitmapDescriptor.hueRed;
+      if (severity == 'Yellow') hue = BitmapDescriptor.hueOrange;
+
+      newMarkers.add(
+        Marker(
+          markerId: MarkerId(wp['name']),
+          position: LatLng(wp['lat'], wp['lng']),
+          icon: BitmapDescriptor.defaultMarkerWithHue(hue),
+          infoWindow: InfoWindow(
+            title: wp['name'],
+            snippet: severity != 'Clear' ? 'HAZARD: ${alert['hazard']}' : '${wp['distance_from_origin_miles']} mi from start',
+          ),
+        ),
+      );
+    }
+
+    setState(() {
+      _markers.clear();
+      _markers.addAll(newMarkers);
+    });
+  }
+
+  Widget _buildHazardBanner() {
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.red.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(AppDesignSystem.radiusDefault),
+        border: Border.all(color: Colors.red.withOpacity(0.5)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: Colors.red),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('CRITICAL WEATHER ALERTS', style: AppDesignSystem.labelBold.copyWith(color: Colors.red)),
+                const Text('Hazards detected on your route. Review waypoints before departure.', style: TextStyle(fontSize: 11, color: Colors.red)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   final String _darkMapStyle = '''[]'''; // Placeholder for dark mode JSON
 
 
@@ -679,6 +810,7 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       waypoints: _generatedWaypoints,
       routePolyline: _encodedPolyline,
       drivingDays: _selectedDays,
+      weatherCondition: _weatherAudit,
     );
 
     context.read<RouteCubit>().saveRoute(route);
