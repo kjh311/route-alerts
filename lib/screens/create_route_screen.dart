@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_polyline_algorithm/google_polyline_algorithm.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/intl.dart';
 import '../theme/design_system.dart';
 import '../logic/route_cubit.dart';
 import '../models/route_model.dart';
@@ -146,7 +147,7 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
             body: ListView(
               padding: const EdgeInsets.symmetric(horizontal: AppDesignSystem.marginEdge),
               children: [
-                if (_weatherAudit != null && _weatherAudit!['status'] == 'Critical')
+                if (_weatherAudit != null && _weatherAudit!['status'] != 'Clear')
                   _buildHazardBanner(),
                 const SizedBox(height: 24),
                 // Header
@@ -198,7 +199,20 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                   if (_generatedWaypoints.isNotEmpty) ...[
                     _buildBentoCard(
                       label: 'Route Points',
-                      headerAction: Text('${_generatedWaypoints.length} STOPS FOUND', style: const TextStyle(color: AppDesignSystem.outline, fontSize: 10, fontWeight: FontWeight.bold)),
+                      headerAction: Row(
+                        children: [
+                          if (_isAuditingWeather)
+                            Row(
+                              children: [
+                                const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: AppDesignSystem.primary)),
+                                const SizedBox(width: 8),
+                                Text('RUNNING SAFETY AUDIT...', style: TextStyle(color: AppDesignSystem.primary, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                                const SizedBox(width: 16),
+                              ],
+                            ),
+                          Text('${_generatedWaypoints.length} STOPS FOUND', style: const TextStyle(color: AppDesignSystem.outline, fontSize: 10, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
                       child: Column(
                         children: _generatedWaypoints.asMap().entries.map((entry) {
                           final index = entry.key;
@@ -214,20 +228,24 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                           final severity = alert?['severity'] ?? 'Clear';
                           
                           Color accentColor = AppDesignSystem.outline;
-                          IconData icon = Icons.circle;
+                          IconData markerIcon = Icons.circle;
                           if (severity == 'Red') {
                             accentColor = Colors.red;
-                            icon = Icons.warning_amber_rounded;
+                            markerIcon = Icons.warning_amber_rounded;
                           } else if (severity == 'Yellow') {
                             accentColor = Colors.orange;
-                            icon = Icons.info_outline;
+                            markerIcon = Icons.info_outline;
                           } else if (isFirst) {
                             accentColor = AppDesignSystem.secondary;
-                            icon = Icons.location_on;
+                            markerIcon = Icons.location_on;
                           } else if (isLast) {
                             accentColor = AppDesignSystem.primary;
-                            icon = Icons.flag;
+                            markerIcon = Icons.flag;
                           }
+
+                          final String? weatherIconCode = alert?['icon'];
+                          final double? temp = alert?['temp'];
+                          const String iconUrlBase = 'https://openweathermap.org/img/wn/';
 
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 8.0),
@@ -240,7 +258,7 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                               ),
                               child: Row(
                                 children: [
-                                  Icon(icon, color: accentColor, size: 20),
+                                  Icon(markerIcon, color: accentColor, size: 20),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
@@ -260,13 +278,21 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                                               const SizedBox(width: 8),
                                             ],
                                             if (severity != 'Clear')
-                                              Text(alert!['hazard'], 
+                                              Text('Peak Gusts: ${(alert?['peak_wind'] as num?)?.round() ?? 0}mph at ${alert?['peak_time'] != null ? DateFormat('h:mm a').format(DateTime.parse(alert!['peak_time'])) : 'N/A'}',
                                                 style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: accentColor)),
                                           ],
                                         ),
                                       ],
                                     ),
                                   ),
+                                  if (weatherIconCode != null)
+                                    Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Image.network('$iconUrlBase${weatherIconCode}@2x.png', width: 32, height: 32),
+                                        Text('${temp?.round()}°', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                      ],
+                                    ),
                                   if (_isAuditingWeather && index == _generatedWaypoints.length - 1)
                                     const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppDesignSystem.primary)),
                                 ],
@@ -696,7 +722,7 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       final audit = await _weatherService.auditRouteWeather(
         departureTime: departureTime,
         waypoints: _generatedWaypoints,
-        totalDurationMinutes: _totalDurationMinutes,
+        shiftDurationHours: _duration,
         totalDistanceMiles: _totalDistanceMiles,
       );
 
@@ -749,24 +775,29 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
   }
 
   Widget _buildHazardBanner() {
+    final status = _weatherAudit!['status'];
+    final worstHazard = _weatherAudit!['worst_hazard'] ?? 'Multiple hazards detected';
+    final isCritical = status == 'Critical';
+    final color = isCritical ? Colors.red : Colors.orange;
+    
     return Container(
       margin: const EdgeInsets.only(top: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.red.withOpacity(0.1),
+        color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(AppDesignSystem.radiusDefault),
-        border: Border.all(color: Colors.red.withOpacity(0.5)),
+        border: Border.all(color: color.withOpacity(0.5)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.warning_amber_rounded, color: Colors.red),
+          Icon(isCritical ? Icons.warning_amber_rounded : Icons.info_outline, color: color),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('CRITICAL WEATHER ALERTS', style: AppDesignSystem.labelBold.copyWith(color: Colors.red)),
-                const Text('Hazards detected on your route. Review waypoints before departure.', style: TextStyle(fontSize: 11, color: Colors.red)),
+                Text(isCritical ? 'CRITICAL WEATHER ALERTS' : 'SAFETY CAUTION ADVISED', style: AppDesignSystem.labelBold.copyWith(color: color)),
+                Text(worstHazard, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold)),
               ],
             ),
           ),
