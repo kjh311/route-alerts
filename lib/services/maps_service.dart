@@ -111,18 +111,18 @@ class MapsService {
       })($startLat, $startLng, $endLat, $endLng)
     """]);
 
-    js.context['onGoogleDirectionsSuccess'] = (String polyline, int distance, int duration) {
+    js.context['onGoogleDirectionsSuccess'] = js.allowInterop((polyline, distance, duration) {
       completer.complete({
-        'polyline': polyline,
-        'distance_meters': distance,
-        'duration_seconds': duration,
+        'polyline': polyline as String,
+        'distance_meters': (distance as num).toInt(),
+        'duration_seconds': (duration as num).toInt(),
       });
-    };
+    });
 
-    js.context['onGoogleDirectionsFailure'] = (String status) {
+    js.context['onGoogleDirectionsFailure'] = js.allowInterop((status) {
       debugPrint('DEBUG: Directions API Failed: $status');
       completer.complete(null);
-    };
+    });
 
     return completer.future;
   }
@@ -186,13 +186,14 @@ class MapsService {
       })($lat, $lng)
     """]);
 
-    js.context['onGoogleGeocodeSuccess'] = (String cityState) {
-      completer.complete(cityState.isNotEmpty ? {'name': cityState} : null);
-    };
+    js.context['onGoogleGeocodeSuccess'] = js.allowInterop((cityState) {
+      final cityStr = cityState?.toString() ?? '';
+      completer.complete(cityStr.isNotEmpty ? {'name': cityStr} : null);
+    });
 
-    js.context['onGoogleGeocodeFailure'] = (String status) {
+    js.context['onGoogleGeocodeFailure'] = js.allowInterop((status) {
       completer.complete(null);
-    };
+    });
 
     return completer.future;
   }

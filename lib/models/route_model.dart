@@ -12,6 +12,7 @@ class RouteModel {
   final List<String> drivingDays;
   final int delayMinutes;
   final Map<String, dynamic>? weatherCondition;
+  final double shiftDuration;
   final DateTime? updatedAt;
   final DateTime? createdAt;
 
@@ -26,6 +27,7 @@ class RouteModel {
     required this.routePolyline,
     this.drivingDays = const [],
     this.delayMinutes = 0,
+    this.shiftDuration = 11.5,
     this.weatherCondition,
     this.updatedAt,
     this.createdAt,
@@ -43,7 +45,10 @@ class RouteModel {
       routePolyline: json['route_polyline'] as String,
       drivingDays: List<String>.from(json['driving_days'] ?? []),
       delayMinutes: json['delay_minutes'] as int,
-      weatherCondition: json['weather_condition'] as Map<String, dynamic>?,
+      weatherCondition: json['weather_condition'] is Map 
+          ? json['weather_condition'] as Map<String, dynamic>
+          : { 'status': json['weather_condition']?.toString() ?? 'Clear', 'alerts': [] },
+      shiftDuration: (json['shift_duration'] ?? 11.5).toDouble(),
       updatedAt: json['updated_at'] != null ? DateTime.parse(json['updated_at'] as String) : null,
       createdAt: json['created_at'] != null ? DateTime.parse(json['created_at'] as String) : null,
     );
@@ -61,6 +66,7 @@ class RouteModel {
       'route_polyline': routePolyline,
       'driving_days': drivingDays,
       'delay_minutes': delayMinutes,
+      'shift_duration': shiftDuration,
       'weather_condition': weatherCondition,
     };
     

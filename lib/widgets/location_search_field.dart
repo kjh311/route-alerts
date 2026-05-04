@@ -98,14 +98,16 @@ class _LocationSearchFieldState extends State<LocationSearchField> {
         })('$query')
       """]);
 
-      js.context['onGooglePredictions'] = (List<dynamic> results) {
+      js.context['onGooglePredictions'] = js.allowInterop((results) {
         setState(() {
           _predictions.clear();
-          _predictions.addAll(results);
+          if (results != null) {
+            _predictions.addAll(results as List<dynamic>);
+          }
         });
         _showOverlay();
         completer.complete();
-      };
+      });
     } catch (e) {
       completer.completeError(e);
     }
@@ -158,11 +160,11 @@ class _LocationSearchFieldState extends State<LocationSearchField> {
           })('$placeId')
         """]);
 
-        js.context['onGooglePlaceDetails'] = (double pLat, double pLng) {
-          lat = pLat;
-          lng = pLng;
+        js.context['onGooglePlaceDetails'] = js.allowInterop((pLat, pLng) {
+          lat = (pLat as num).toDouble();
+          lng = (pLng as num).toDouble();
           completer.complete();
-        };
+        });
         await completer.future;
       } else {
         final detailResponse = await _dio.get(

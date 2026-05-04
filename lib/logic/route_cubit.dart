@@ -29,18 +29,11 @@ class RouteCubit extends Cubit<RouteState> {
         return;
       }
 
-      // Ensure the model has the correct user_id from the session
-      final routeWithUser = RouteModel(
-        userId: userId,
-        originName: route.originName,
-        destinationName: route.destinationName,
-        departureTime: route.departureTime,
-        alertLeadMinutes: route.alertLeadMinutes,
-        waypoints: route.waypoints,
-        routePolyline: route.routePolyline,
-      );
+      final map = route.toMap();
+      map['user_id'] = userId;
+      if (route.id != null) map['id'] = route.id;
 
-      await _supabase.from('routes').insert(routeWithUser.toMap());
+      await _supabase.from('routes').upsert(map);
 
       emit(RouteSuccess());
     } catch (e) {

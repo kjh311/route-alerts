@@ -31,7 +31,7 @@ class WeatherService {
       final int offsetMinutes = (progress * totalDurationMinutes).round();
       final DateTime eta = departureTime.add(Duration(minutes: offsetMinutes));
       
-      wp['eta'] = eta; // Attach to waypoint for logging/UI
+      wp['eta'] = eta.toIso8601String(); // Attach as string for JSON compatibility
       debugPrint('DEBUG: Waypoint ${wp['name']} | Dist: $dist mi | ETA: $eta');
 
       // 2. Fetch Forecast

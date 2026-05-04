@@ -14,15 +14,34 @@ class MyRoutesScreen extends StatefulWidget {
 
 class _MyRoutesScreenState extends State<MyRoutesScreen> {
   final RouteService _routeService = RouteService();
+  late Future<List<RouteModel>> _routesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _routesFuture = _routeService.fetchRoutes();
+  }
+
+  void _reloadRoutes() {
+    setState(() {
+      _routesFuture = _routeService.fetchRoutes();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('MY ROUTES'),
+        actions: [
+          IconButton(
+            onPressed: _reloadRoutes,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
       body: FutureBuilder<List<RouteModel>>(
-        future: _routeService.fetchRoutes(),
+        future: _routesFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator(color: AppDesignSystem.primary));
@@ -58,11 +77,12 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
                   Text('No routes saved yet', style: AppDesignSystem.headlineMedium.copyWith(color: AppDesignSystem.outline)),
                   const SizedBox(height: 24),
                   ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.push(
+                    onPressed: () async {
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const CreateRouteScreen()),
                       );
+                      _reloadRoutes();
                     },
                     icon: const Icon(Icons.add),
                     label: const Text('CREATE FIRST ROUTE'),
@@ -81,7 +101,10 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
             itemCount: routes.length,
             separatorBuilder: (context, index) => const SizedBox(height: 16),
             itemBuilder: (context, index) {
-              return _RouteCard(route: routes[index]);
+              return _RouteCard(
+                route: routes[index],
+                onUpdate: _reloadRoutes,
+              );
             },
           );
         },
@@ -92,8 +115,9 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
 
 class _RouteCard extends StatelessWidget {
   final RouteModel route;
+  final VoidCallback onUpdate;
 
-  const _RouteCard({required this.route});
+  const _RouteCard({required this.route, required this.onUpdate});
 
   @override
   Widget build(BuildContext context) {
@@ -102,13 +126,14 @@ class _RouteCard extends StatelessWidget {
     final timeStr = DateFormat('hh:mm a').format(route.departureTime).toUpperCase();
 
     return InkWell(
-      onTap: () {
-        Navigator.push(
+      onTap: () async {
+        await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => CreateRouteScreen(initialRoute: route),
           ),
         );
+        onUpdate();
       },
       borderRadius: BorderRadius.circular(AppDesignSystem.radiusDefault),
       child: Container(

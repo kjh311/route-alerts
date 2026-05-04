@@ -65,6 +65,15 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       _encodedPolyline = route.routePolyline;
       _selectedDays = List<String>.from(route.drivingDays);
       _weatherAudit = route.weatherCondition;
+      _duration = route.shiftDuration;
+      
+      // Extract stats from waypoints if possible
+      if (_generatedWaypoints.isNotEmpty) {
+        final lastWp = _generatedWaypoints.last;
+        _totalDistanceMiles = lastWp['distance_from_origin_miles'] ?? 0;
+        // Estimate duration if not stored: dist / 60mph * 60 min
+        _totalDurationMinutes = (_totalDistanceMiles / 60 * 60).round();
+      }
       
       // Setup map data
       _startData = {'description': route.originName};
@@ -83,6 +92,7 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
 
       // Schedule fitBounds after map controller is ready
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Ensure we pass the decoded points to fitBounds
         _fitBounds(points);
       });
     }
@@ -174,42 +184,7 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                 ),
                 const SizedBox(height: AppDesignSystem.stackGap),
 
-                // Driving Days Selection
-                _buildBentoCard(
-                  label: 'Days of the Week',
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 0,
-                    children: _daysOfWeek.map((day) {
-                      final isSelected = _selectedDays.contains(day);
-                      return FilterChip(
-                        label: Text(day, style: TextStyle(
-                          color: isSelected ? AppDesignSystem.onPrimary : AppDesignSystem.outline,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        )),
-                        selected: isSelected,
-                        onSelected: isViewing ? null : (selected) {
-                          setState(() {
-                            if (selected) {
-                              _selectedDays.add(day);
-                            } else {
-                              _selectedDays.remove(day);
-                            }
-                          });
-                        },
-                        selectedColor: AppDesignSystem.primary,
-                        checkmarkColor: AppDesignSystem.onPrimary,
-                        backgroundColor: AppDesignSystem.surfaceContainerLow,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(AppDesignSystem.radiusSmall),
-                          side: BorderSide(color: isSelected ? AppDesignSystem.primary : AppDesignSystem.outline.withOpacity(0.2)),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-                const SizedBox(height: AppDesignSystem.gutter),
+
 
                 // Map Preview & Route Points (Hidden until both endpoints are set)
                 if (_startData != null && _endData != null) ...[
@@ -232,10 +207,10 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                           final isLast = index == _generatedWaypoints.length - 1;
                           
                           // Weather Audit Lookup
-                          final alert = (_weatherAudit?['alerts'] as List<dynamic>?)?.firstWhere(
-                            (a) => a['city'] == wp['name'],
-                            orElse: () => null,
-                          );
+                          final alertsList = _weatherAudit?['alerts'] as List<dynamic>?;
+                          final alert = alertsList?.any((a) => a['city'] == wp['name']) ?? false
+                              ? alertsList!.firstWhere((a) => a['city'] == wp['name'])
+                              : null;
                           final severity = alert?['severity'] ?? 'Clear';
                           
                           Color accentColor = AppDesignSystem.outline;
@@ -393,28 +368,65 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                 ),
                 const SizedBox(height: AppDesignSystem.gutter),
 
-                const SizedBox(height: 32),
-                // Save Button (Hidden in View mode)
-                if (!isViewing)
-                  ElevatedButton(
-                    onPressed: state is RouteLoading ? null : () => _saveRoute(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppDesignSystem.primaryVariant,
-                      minimumSize: const Size.fromHeight(64),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (state is RouteLoading)
-                          const CircularProgressIndicator(color: AppDesignSystem.onPrimary)
-                        else ...[
-                          const Icon(Icons.save),
-                          const SizedBox(width: 12),
-                          const Text('SAVE & ACTIVATE ROUTE'),
-                        ]
-                      ],
-                    ),
+                // Driving Days Selection
+                _buildBentoCard(
+                  label: 'Days of the Week',
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _daysOfWeek.map((day) {
+                      final isSelected = _selectedDays.contains(day);
+                      return FilterChip(
+                        label: Text(day, style: TextStyle(
+                          color: isSelected ? AppDesignSystem.onPrimary : AppDesignSystem.onSurfaceVariant,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        )),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          setState(() {
+                            if (selected) {
+                              _selectedDays.add(day);
+                            } else {
+                              _selectedDays.remove(day);
+                            }
+                          });
+                        },
+                        selectedColor: AppDesignSystem.primary,
+                        checkmarkColor: AppDesignSystem.onPrimary,
+                        backgroundColor: AppDesignSystem.surfaceContainerLow,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(AppDesignSystem.radiusSmall),
+                          side: BorderSide(color: isSelected ? AppDesignSystem.primary : AppDesignSystem.outline.withOpacity(0.2)),
+                        ),
+                      );
+                    }).toList(),
                   ),
+                ),
+                const SizedBox(height: AppDesignSystem.gutter),
+
+                const SizedBox(height: 32),
+                const SizedBox(height: 32),
+                // Save / Update Button
+                ElevatedButton(
+                  onPressed: state is RouteLoading ? null : () => _saveRoute(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppDesignSystem.primaryVariant,
+                    minimumSize: const Size.fromHeight(64),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (state is RouteLoading)
+                        const CircularProgressIndicator(color: AppDesignSystem.onPrimary)
+                      else ...[
+                        const Icon(Icons.save),
+                        const SizedBox(width: 12),
+                        Text(isViewing ? 'UPDATE ROUTE' : 'SAVE & ACTIVATE ROUTE'),
+                      ]
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 48),
               ],
             ),
@@ -708,10 +720,9 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
     final Set<Marker> newMarkers = {};
 
     for (var wp in _generatedWaypoints) {
-      final alert = alerts.firstWhere(
-        (a) => a['city'] == wp['name'],
-        orElse: () => null,
-      );
+      final alert = alerts.any((a) => a['city'] == wp['name'])
+          ? alerts.firstWhere((a) => a['city'] == wp['name'])
+          : null;
 
       final severity = alert?['severity'] ?? 'Clear';
       double hue = BitmapDescriptor.hueBlue;
@@ -802,6 +813,7 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
     }
 
     final route = RouteModel(
+      id: widget.initialRoute?.id,
       userId: userId,
       originName: _startController.text,
       destinationName: _endController.text,
@@ -811,6 +823,7 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       routePolyline: _encodedPolyline,
       drivingDays: _selectedDays,
       weatherCondition: _weatherAudit,
+      shiftDuration: _duration,
     );
 
     context.read<RouteCubit>().saveRoute(route);
