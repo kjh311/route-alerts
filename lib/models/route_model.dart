@@ -9,6 +9,7 @@ class RouteModel {
   final int alertLeadMinutes;
   final List<dynamic> waypoints;
   final String routePolyline;
+  final List<String> drivingDays;
   final int delayMinutes;
   final String weatherCondition;
   final DateTime? updatedAt;
@@ -23,6 +24,7 @@ class RouteModel {
     required this.alertLeadMinutes,
     required this.waypoints,
     required this.routePolyline,
+    this.drivingDays = const [],
     this.delayMinutes = 0,
     this.weatherCondition = 'Clear',
     this.updatedAt,
@@ -39,6 +41,7 @@ class RouteModel {
       alertLeadMinutes: json['alert_lead_minutes'] as int,
       waypoints: json['waypoints'] as List<dynamic>,
       routePolyline: json['route_polyline'] as String,
+      drivingDays: List<String>.from(json['driving_days'] ?? []),
       delayMinutes: json['delay_minutes'] as int,
       weatherCondition: json['weather_condition'] as String,
       updatedAt: json['updated_at'] != null ? DateTime.parse(json['updated_at'] as String) : null,
@@ -56,6 +59,7 @@ class RouteModel {
       'alert_lead_minutes': alertLeadMinutes,
       'waypoints': waypoints,
       'route_polyline': routePolyline,
+      'driving_days': drivingDays,
       'delay_minutes': delayMinutes,
       'weather_condition': weatherCondition,
     };

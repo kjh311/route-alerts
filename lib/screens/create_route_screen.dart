@@ -42,6 +42,9 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
   TimeOfDay _startTime = const TimeOfDay(hour: 6, minute: 0);
   double _duration = 11.5;
   int _alertLeadTime = 30;
+  List<String> _selectedDays = [];
+
+  final List<String> _daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   @override
   void initState() {
@@ -55,6 +58,7 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       _alertLeadTime = route.alertLeadMinutes;
       _generatedWaypoints = List<Map<String, dynamic>>.from(route.waypoints);
       _encodedPolyline = route.routePolyline;
+      _selectedDays = List<String>.from(route.drivingDays);
       
       // Setup map data
       _startData = {'description': route.originName};
@@ -164,6 +168,43 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                     onSelected: (desc, lat, lng) {
                       _handleLocationSelection(false, desc, lat, lng);
                     },
+                  ),
+                ),
+                const SizedBox(height: AppDesignSystem.stackGap),
+
+                // Driving Days Selection
+                _buildBentoCard(
+                  label: 'Days of the Week',
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 0,
+                    children: _daysOfWeek.map((day) {
+                      final isSelected = _selectedDays.contains(day);
+                      return FilterChip(
+                        label: Text(day, style: TextStyle(
+                          color: isSelected ? AppDesignSystem.onPrimary : AppDesignSystem.outline,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        )),
+                        selected: isSelected,
+                        onSelected: isViewing ? null : (selected) {
+                          setState(() {
+                            if (selected) {
+                              _selectedDays.add(day);
+                            } else {
+                              _selectedDays.remove(day);
+                            }
+                          });
+                        },
+                        selectedColor: AppDesignSystem.primary,
+                        checkmarkColor: AppDesignSystem.onPrimary,
+                        backgroundColor: AppDesignSystem.surfaceContainerLow,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(AppDesignSystem.radiusSmall),
+                          side: BorderSide(color: isSelected ? AppDesignSystem.primary : AppDesignSystem.outline.withOpacity(0.2)),
+                        ),
+                      );
+                    }).toList(),
                   ),
                 ),
                 const SizedBox(height: AppDesignSystem.gutter),
@@ -624,6 +665,11 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       _startTime.minute,
     );
 
+    if (_selectedDays.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select at least one driving day')));
+      return;
+    }
+
     final route = RouteModel(
       userId: userId,
       originName: _startController.text,
@@ -632,6 +678,7 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       alertLeadMinutes: _alertLeadTime,
       waypoints: _generatedWaypoints,
       routePolyline: _encodedPolyline,
+      drivingDays: _selectedDays,
     );
 
     context.read<RouteCubit>().saveRoute(route);
