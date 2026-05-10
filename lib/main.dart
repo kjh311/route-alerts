@@ -6,6 +6,7 @@ import 'screens/auth_wrapper.dart';
 import 'theme/design_system.dart';
 import 'services/subscription_service.dart';
 import 'services/auth_service.dart';
+import 'services/ai_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,8 +24,12 @@ Future<void> main() async {
     print('DEBUG: Supabase initialized');
 
     print('DEBUG: Initializing AuthService...');
-    await AuthService().init();
+    await AuthService.init();
     print('DEBUG: AuthService initialized');
+
+    print('DEBUG: Initializing AIService...');
+    AIService().init();
+    print('DEBUG: AIService initialized');
 
     print('DEBUG: Initializing SubscriptionService...');
     await SubscriptionService().init();

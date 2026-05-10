@@ -6,6 +6,7 @@ import '../services/route_service.dart';
 import 'create_route_screen.dart';
 import '../services/weather_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/ai_service.dart';
 
 class MyRoutesScreen extends StatefulWidget {
   const MyRoutesScreen({super.key});
@@ -146,6 +147,14 @@ class _RouteCardState extends State<_RouteCard> {
         totalDistanceMiles: widget.route.waypoints.last['distance_from_origin_miles'] ?? 0,
       );
 
+      // Generate AI Summary
+      try {
+        final aiBriefing = await AIService().generateWeatherBriefing(audit);
+        audit['ai_briefing'] = aiBriefing;
+      } catch (aiError) {
+        debugPrint('DEBUG: AI Briefing generation failed: $aiError');
+      }
+
       // Update Supabase
       await Supabase.instance.client
           .from('routes')
@@ -167,6 +176,11 @@ class _RouteCardState extends State<_RouteCard> {
   String? _parseBriefingSummary() {
     final audit = widget.route.weatherCondition;
     if (audit == null) return null;
+
+    // Use AI briefing if available
+    if (audit['ai_briefing'] != null) {
+      return audit['ai_briefing'] as String;
+    }
 
     final alerts = audit['alerts'] as List<dynamic>?;
     if (alerts == null || alerts.isEmpty) return null;
