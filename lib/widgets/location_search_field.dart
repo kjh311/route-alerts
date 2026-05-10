@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
-import 'dart:js' as js;
+import 'package:haul_alerts/services/js_stub.dart' if (dart.library.js) 'dart:js' as js;
 import '../theme/design_system.dart';
 import '../core/constants.dart';
 import '../services/google_maps_loader.dart';
