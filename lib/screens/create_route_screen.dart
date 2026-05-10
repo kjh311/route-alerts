@@ -49,8 +49,6 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
 
   final List<String> _daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   
-  Map<String, dynamic>? _weatherAudit;
-  bool _isAuditingWeather = false;
 
   @override
   void initState() {
@@ -65,7 +63,6 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       _generatedWaypoints = List<Map<String, dynamic>>.from(route.waypoints);
       _encodedPolyline = route.routePolyline;
       _selectedDays = List<String>.from(route.drivingDays);
-      _weatherAudit = route.weatherCondition;
       _duration = route.shiftDuration;
       
       // Extract stats from waypoints if possible
@@ -82,14 +79,8 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       
       // Initialize markers and polylines
       final points = _decodeEncodedPolyline(_encodedPolyline);
-      _polylines.add(Polyline(
-        polylineId: const PolylineId('route'),
-        points: points,
-        color: AppDesignSystem.primary,
-        width: 6,
-      ));
+      _updateMarkers();
 
-      _updateMarkersWithHazards();
 
       // Schedule fitBounds after map controller is ready
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -147,8 +138,6 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
             body: ListView(
               padding: const EdgeInsets.symmetric(horizontal: AppDesignSystem.marginEdge),
               children: [
-                if (_weatherAudit != null && _weatherAudit!['status'] != 'Clear')
-                  _buildHazardBanner(),
                 const SizedBox(height: 24),
                 // Header
                 Text(isViewing ? 'Saved Dedicated Route' : 'New Dedicated Route', style: AppDesignSystem.headlineLarge.copyWith(color: AppDesignSystem.primaryVariant)),
@@ -201,15 +190,6 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                       label: 'Route Points',
                       headerAction: Row(
                         children: [
-                          if (_isAuditingWeather)
-                            Row(
-                              children: [
-                                const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: AppDesignSystem.primary)),
-                                const SizedBox(width: 8),
-                                Text('RUNNING SAFETY AUDIT...', style: TextStyle(color: AppDesignSystem.primary, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
-                                const SizedBox(width: 16),
-                              ],
-                            ),
                           Text('${_generatedWaypoints.length} STOPS FOUND', style: const TextStyle(color: AppDesignSystem.outline, fontSize: 10, fontWeight: FontWeight.bold)),
                         ],
                       ),
@@ -220,32 +200,6 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                           final isFirst = index == 0;
                           final isLast = index == _generatedWaypoints.length - 1;
                           
-                          // Weather Audit Lookup
-                          final alertsList = _weatherAudit?['alerts'] as List<dynamic>?;
-                          final alert = alertsList?.any((a) => a['city'] == wp['name']) ?? false
-                              ? alertsList!.firstWhere((a) => a['city'] == wp['name'])
-                              : null;
-                          final severity = alert?['severity'] ?? 'Clear';
-                          
-                          Color accentColor = AppDesignSystem.outline;
-                          IconData markerIcon = Icons.circle;
-                          if (severity == 'Red') {
-                            accentColor = Colors.red;
-                            markerIcon = Icons.warning_amber_rounded;
-                          } else if (severity == 'Yellow') {
-                            accentColor = Colors.orange;
-                            markerIcon = Icons.info_outline;
-                          } else if (isFirst) {
-                            accentColor = AppDesignSystem.secondary;
-                            markerIcon = Icons.location_on;
-                          } else if (isLast) {
-                            accentColor = AppDesignSystem.primary;
-                            markerIcon = Icons.flag;
-                          }
-
-                          final String? weatherIconCode = alert?['icon'];
-                          final double? temp = alert?['temp'];
-                          const String iconUrlBase = 'https://openweathermap.org/img/wn/';
 
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 8.0),
@@ -254,47 +208,31 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                               decoration: BoxDecoration(
                                 color: AppDesignSystem.surfaceContainerHigh,
                                 borderRadius: BorderRadius.circular(AppDesignSystem.radiusDefault),
-                                border: Border(left: BorderSide(color: accentColor, width: 4)),
+                                border: Border(left: BorderSide(color: isFirst ? AppDesignSystem.secondary : (isLast ? AppDesignSystem.primary : AppDesignSystem.outline), width: 4)),
                               ),
                               child: Row(
                                 children: [
-                                  Icon(markerIcon, color: accentColor, size: 20),
+                                  Icon(
+                                    isFirst ? Icons.location_on : (isLast ? Icons.flag : Icons.circle), 
+                                    color: isFirst ? AppDesignSystem.secondary : (isLast ? AppDesignSystem.primary : AppDesignSystem.outline), 
+                                    size: 20
+                                  ),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(wp['name'], style: AppDesignSystem.bodyLarge.copyWith(
-                                          fontWeight: severity != 'Clear' ? FontWeight.bold : FontWeight.normal,
-                                        )),
+                                        Text(wp['name'], style: AppDesignSystem.bodyLarge),
                                         Row(
                                           children: [
                                             if (!isFirst)
                                               Text('${wp['distance_from_origin_miles']} mi from origin', 
                                                 style: TextStyle(fontSize: 10, color: AppDesignSystem.outline.withOpacity(0.8))),
-                                            if (!isFirst && severity != 'Clear') ...[
-                                              const SizedBox(width: 8),
-                                              const Text('•', style: TextStyle(color: AppDesignSystem.outline, fontSize: 10)),
-                                              const SizedBox(width: 8),
-                                            ],
-                                            if (severity != 'Clear')
-                                              Text('Peak Gusts: ${(alert?['peak_wind'] as num?)?.round() ?? 0}mph at ${alert?['peak_time'] != null ? DateFormat('h:mm a').format(DateTime.parse(alert!['peak_time'])) : 'N/A'}',
-                                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: accentColor)),
                                           ],
                                         ),
                                       ],
                                     ),
                                   ),
-                                  if (weatherIconCode != null)
-                                    Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Image.network('$iconUrlBase${weatherIconCode}@2x.png', width: 32, height: 32),
-                                        Text('${temp?.round()}°', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                      ],
-                                    ),
-                                  if (_isAuditingWeather && index == _generatedWaypoints.length - 1)
-                                    const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppDesignSystem.primary)),
                                 ],
                               ),
                             ),
@@ -621,37 +559,13 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       _totalDurationMinutes = result['total_duration_minutes'];
 
       // Update Markers
-      _markers.clear();
-      for (var wp in _generatedWaypoints) {
-        _markers.add(
-          Marker(
-            markerId: MarkerId(wp['name']),
-            position: LatLng(wp['lat'], wp['lng']),
-            infoWindow: InfoWindow(title: wp['name'], snippet: '${wp['distance_from_origin_miles']} mi from start'),
-          ),
-        );
-      }
-
-      // Update Polyline
-      _polylines.clear();
-      // Decode for polyline widget
-      final List<LatLng> polyPoints = _decodeEncodedPolyline(_encodedPolyline);
-      _polylines.add(
-        Polyline(
-          polylineId: const PolylineId('route'),
-          points: polyPoints,
-          color: AppDesignSystem.primary,
-          width: 5,
-        ),
-      );
+      _updateMarkers();
 
       setState(() => _isGeneratingRoute = false);
       
-      // Fit Bounds
-      Future.delayed(const Duration(milliseconds: 500), () => _fitBounds(polyPoints));
+      final points = _decodeEncodedPolyline(_encodedPolyline);
+      Future.delayed(const Duration(milliseconds: 500), () => _fitBounds(points));
 
-      // 4. Start Weather Audit
-      _auditWeather();
 
     } catch (e) {
       setState(() => _isGeneratingRoute = false);
@@ -705,106 +619,8 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
     }
   }
 
-  Future<void> _auditWeather() async {
-    if (_generatedWaypoints.isEmpty) return;
-    
-    setState(() => _isAuditingWeather = true);
 
-    final departureTime = DateTime(
-      DateTime.now().year,
-      DateTime.now().month,
-      DateTime.now().day,
-      _startTime.hour,
-      _startTime.minute,
-    );
 
-    try {
-      final audit = await _weatherService.auditRouteWeather(
-        departureTime: departureTime,
-        waypoints: _generatedWaypoints,
-        shiftDurationHours: _duration,
-        totalDistanceMiles: _totalDistanceMiles,
-      );
-
-      setState(() {
-        _weatherAudit = audit;
-        _isAuditingWeather = false;
-        
-        // Update markers to reflect hazard levels
-        _updateMarkersWithHazards();
-      });
-    } catch (e) {
-      setState(() => _isAuditingWeather = false);
-      debugPrint('DEBUG: Weather Audit Error: $e');
-    }
-  }
-
-  void _updateMarkersWithHazards() {
-    if (_weatherAudit == null) return;
-
-    final alerts = _weatherAudit!['alerts'] as List<dynamic>;
-    final Set<Marker> newMarkers = {};
-
-    for (var wp in _generatedWaypoints) {
-      final alert = alerts.any((a) => a['city'] == wp['name'])
-          ? alerts.firstWhere((a) => a['city'] == wp['name'])
-          : null;
-
-      final severity = alert?['severity'] ?? 'Clear';
-      double hue = BitmapDescriptor.hueBlue;
-      if (severity == 'Red') hue = BitmapDescriptor.hueRed;
-      if (severity == 'Yellow') hue = BitmapDescriptor.hueOrange;
-
-      newMarkers.add(
-        Marker(
-          markerId: MarkerId(wp['name']),
-          position: LatLng(wp['lat'], wp['lng']),
-          icon: BitmapDescriptor.defaultMarkerWithHue(hue),
-          infoWindow: InfoWindow(
-            title: wp['name'],
-            snippet: severity != 'Clear' ? 'HAZARD: ${alert['hazard']}' : '${wp['distance_from_origin_miles']} mi from start',
-          ),
-        ),
-      );
-    }
-
-    setState(() {
-      _markers.clear();
-      _markers.addAll(newMarkers);
-    });
-  }
-
-  Widget _buildHazardBanner() {
-    final status = _weatherAudit!['status'];
-    final worstHazard = _weatherAudit!['worst_hazard'] ?? 'Multiple hazards detected';
-    final isCritical = status == 'Critical';
-    final color = isCritical ? Colors.red : Colors.orange;
-    
-    return Container(
-      margin: const EdgeInsets.only(top: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(AppDesignSystem.radiusDefault),
-        border: Border.all(color: color.withOpacity(0.5)),
-      ),
-      child: Row(
-        children: [
-          Icon(isCritical ? Icons.warning_amber_rounded : Icons.info_outline, color: color),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(isCritical ? 'CRITICAL WEATHER ALERTS' : 'SAFETY CAUTION ADVISED', style: AppDesignSystem.labelBold.copyWith(color: color)),
-                Text(worstHazard, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   final String _darkMapStyle = '''[]'''; // Placeholder for dark mode JSON
 
@@ -853,10 +669,42 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       waypoints: _generatedWaypoints,
       routePolyline: _encodedPolyline,
       drivingDays: _selectedDays,
-      weatherCondition: _weatherAudit,
+      weatherCondition: null,
       shiftDuration: _duration,
     );
 
     context.read<RouteCubit>().saveRoute(route);
+  }
+
+  void _updateMarkers() {
+    setState(() {
+      _markers.clear();
+      for (var wp in _generatedWaypoints) {
+        _markers.add(
+          Marker(
+            markerId: MarkerId(wp['name']),
+            position: LatLng(
+              (wp['lat'] as num).toDouble(), 
+              (wp['lng'] as num).toDouble()
+            ),
+            infoWindow: InfoWindow(
+              title: wp['name'],
+              snippet: '${wp['distance_from_origin_miles']} mi from start',
+            ),
+          ),
+        );
+      }
+      
+      if (_encodedPolyline.isNotEmpty) {
+        final points = _decodeEncodedPolyline(_encodedPolyline);
+        _polylines.clear();
+        _polylines.add(Polyline(
+          polylineId: const PolylineId('route'),
+          points: points,
+          color: AppDesignSystem.primary,
+          width: 5,
+        ));
+      }
+    });
   }
 }

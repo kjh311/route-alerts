@@ -48,7 +48,8 @@ class RouteModel {
       weatherCondition: json['weather_condition'] is Map 
           ? json['weather_condition'] as Map<String, dynamic>
           : { 'status': json['weather_condition']?.toString() ?? 'Clear', 'alerts': [] },
-      shiftDuration: (json['shift_duration'] ?? 11.5).toDouble(),
+      // DB stores minutes as int, Model uses hours as double
+      shiftDuration: ((json['shift_duration'] ?? 690) as int) / 60.0,
       updatedAt: json['updated_at'] != null ? DateTime.parse(json['updated_at'] as String) : null,
       createdAt: json['created_at'] != null ? DateTime.parse(json['created_at'] as String) : null,
     );
@@ -66,7 +67,7 @@ class RouteModel {
       'route_polyline': routePolyline,
       'driving_days': drivingDays,
       'delay_minutes': delayMinutes,
-      'shift_duration': shiftDuration,
+      'shift_duration': (shiftDuration * 60).round(), // Store as minutes
       'weather_condition': weatherCondition,
     };
     
