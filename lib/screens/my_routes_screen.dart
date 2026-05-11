@@ -306,7 +306,7 @@ class _RouteCardState extends State<_RouteCard> {
     
     // Format driving days nicely
     final dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final activeDaysStr = widget.route.drivingDays.map((d) => dayNames[d]).join(', ');
+    final activeDaysStr = widget.route.drivingDays.map((d) => dayNames[d - 1]).join(', ');
     
     final summary = _parseBriefingSummary();
 

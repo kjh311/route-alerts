@@ -46,8 +46,10 @@ class RouteModel {
       waypoints: json['waypoints'] as List<dynamic>,
       routePolyline: json['route_polyline'] as String,
       drivingDays: (json['driving_days'] as List<dynamic>? ?? [])
-          .map((e) => int.parse(e.toString()))
-          .map((d) => d == 0 ? 1 : d) // Convert 0 (Mon) to 1 (Mon) if old format exists
+          .map((e) => int.tryParse(e.toString()) ?? 0)
+          .map((d) => d == 0 ? 1 : d) // Legacy Mon (0) -> ISO Mon (1)
+          .where((d) => d >= 1 && d <= 7) // Keep only valid ISO days
+          .toSet() // Remove duplicates
           .toList(),
       delayMinutes: (json['delay_minutes'] as num?)?.toInt() ?? 0,
       weatherCondition: json['weather_condition'] is Map 

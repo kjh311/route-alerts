@@ -12,51 +12,11 @@ import 'services/notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  try {
-    print('DEBUG: Loading .env...');
-    await dotenv.load(fileName: ".env");
-    print('DEBUG: .env loaded');
-
-    print('DEBUG: Initializing Supabase...');
-    await Supabase.initialize(
-      url: AppConstants.supabaseUrl,
-      anonKey: AppConstants.supabaseAnonKey,
-    );
-    print('DEBUG: Supabase initialized');
-
-    print('DEBUG: Initializing AuthService...');
-    await AuthService.init();
-    print('DEBUG: AuthService initialized');
-
-    print('DEBUG: Initializing AIService...');
-    AIService().init();
-    print('DEBUG: AIService initialized');
-
-    print('DEBUG: Initializing SubscriptionService...');
-    await SubscriptionService().init();
-    print('DEBUG: SubscriptionService initialized');
-
-    print('DEBUG: Initializing NotificationService...');
-    await NotificationService().init();
-    print('DEBUG: NotificationService initialized');
-
-    print('DEBUG: Running App...');
-    runApp(const HaulAlertsApp());
-  } catch (e, stack) {
-    print('CRITICAL ERROR during initialization: $e');
-    print('Stack trace: $stack');
-    // Fallback UI in case of total failure
-    runApp(MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: Text('App failed to start: $e'),
-        ),
-      ),
-    ));
-  }
+  runApp(const HaulAlertsApp());
 }
 
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 class HaulAlertsApp extends StatelessWidget {
   const HaulAlertsApp({super.key});
@@ -64,6 +24,7 @@ class HaulAlertsApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey, // Set the key
       debugShowCheckedModeBanner: false,
       title: 'Haul Alerts',
       theme: AppDesignSystem.themeData,

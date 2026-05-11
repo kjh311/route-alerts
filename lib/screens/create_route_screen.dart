@@ -433,9 +433,9 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                   child: Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: [0, 1, 2, 3, 4, 5, 6].map((dayNum) {
+                    children: [1, 2, 3, 4, 5, 6, 7].map((dayNum) {
                       final dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-                      final dayName = dayNames[dayNum];
+                      final dayName = dayNames[dayNum - 1];
                       final isSelected = _selectedDays.contains(dayNum);
                       return FilterChip(
                         label: Text(dayName, style: TextStyle(

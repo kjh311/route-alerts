@@ -6,6 +6,10 @@ import 'package:flutter/foundation.dart';
 import '../models/route_model.dart';
 import 'route_service.dart';
 import 'dart:io';
+import 'dart:convert';
+import '../main.dart';
+import '../theme/design_system.dart';
+import 'package:flutter/material.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -58,10 +62,11 @@ class NotificationService {
       settings: initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         if (response.actionId == 'dismiss_summary' || response.actionId == 'dismiss_action') {
-          _notificationsPlugin.cancel(response.id ?? 0);
+          _notificationsPlugin.cancel(id: response.id ?? 0);
           debugPrint('DEBUG: Notification ${response.id} dismissed via action.');
-        } else {
-          debugPrint('DEBUG: Notification body tapped. Maintaining persistence.');
+        } else if (response.payload != null) {
+          _showBriefingDialog(response.payload!);
+          debugPrint('DEBUG: Notification body tapped. Showing full briefing.');
         }
       },
     );
@@ -73,7 +78,7 @@ class NotificationService {
               AndroidFlutterLocalNotificationsPlugin>();
       
       // Delete old channels to force sound update
-      await androidImplementation?.deleteNotificationChannel('route_alerts_channel');
+      await androidImplementation?.deleteNotificationChannel(channelId: 'route_alerts_channel');
       
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
         'shift_alerts_v1', // New ID to force sound update
@@ -191,7 +196,12 @@ class NotificationService {
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-        payload: route.id,
+        payload: jsonEncode({
+          'type': 'scheduled',
+          'title': 'Shift Start Alert: ${route.originName}',
+          'body': 'Your shift to ${route.destinationName} starts soon. Check weather hazards!',
+          'routeId': route.id,
+        }),
       );
       
       debugPrint('DEBUG: Scheduled notification $notificationId for day $day at ${alertDateTime.hour}:${alertDateTime.minute}');
@@ -306,6 +316,40 @@ class NotificationService {
           sound: 'horn.mp3',
         ),
       ),
+      payload: jsonEncode({
+        'type': 'briefing',
+        'title': title,
+        'body': body,
+      }),
     );
+  }
+
+  void _showBriefingDialog(String payload) {
+    try {
+      final data = jsonDecode(payload);
+      final context = navigatorKey.currentContext;
+      if (context == null) return;
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppDesignSystem.surfaceContainerHigh,
+          title: Text(data['title']?.toString().toUpperCase() ?? 'HAUL BRIEFING', 
+              style: AppDesignSystem.headlineMedium.copyWith(color: AppDesignSystem.primary)),
+          content: SingleChildScrollView(
+            child: Text(data['body']?.toString() ?? '', style: AppDesignSystem.bodyMedium),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(backgroundColor: AppDesignSystem.primary),
+              child: Text('DISMISS', style: TextStyle(color: AppDesignSystem.onPrimary)),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      debugPrint('ERROR showing briefing dialog: $e');
+    }
   }
 }
