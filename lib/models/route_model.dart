@@ -13,6 +13,7 @@ class RouteModel {
   final int delayMinutes;
   final Map<String, dynamic>? weatherCondition;
   final double shiftDuration;
+  final bool isActive;
   final DateTime? updatedAt;
   final DateTime? createdAt;
 
@@ -29,6 +30,7 @@ class RouteModel {
     this.delayMinutes = 0,
     this.shiftDuration = 11.5,
     this.weatherCondition,
+    this.isActive = true,
     this.updatedAt,
     this.createdAt,
   });
@@ -43,12 +45,16 @@ class RouteModel {
       alertLeadMinutes: (json['alert_lead_minutes'] as num?)?.toInt() ?? 30,
       waypoints: json['waypoints'] as List<dynamic>,
       routePolyline: json['route_polyline'] as String,
-      drivingDays: List<int>.from(json['driving_days'] ?? []),
+      drivingDays: (json['driving_days'] as List<dynamic>? ?? [])
+          .map((e) => int.parse(e.toString()))
+          .map((d) => d == 0 ? 1 : d) // Convert 0 (Mon) to 1 (Mon) if old format exists
+          .toList(),
       delayMinutes: (json['delay_minutes'] as num?)?.toInt() ?? 0,
       weatherCondition: json['weather_condition'] is Map 
           ? json['weather_condition'] as Map<String, dynamic>
           : { 'status': json['weather_condition']?.toString() ?? 'Clear', 'alerts': [] },
       shiftDuration: ((json['shift_duration'] ?? 690) as num).toInt() / 60.0,
+      isActive: json['is_active'] as bool? ?? true,
       updatedAt: json['updated_at'] != null ? DateTime.parse(json['updated_at'] as String) : null,
       createdAt: json['created_at'] != null ? DateTime.parse(json['created_at'] as String) : null,
     );
@@ -67,6 +73,7 @@ class RouteModel {
       'delay_minutes': delayMinutes,
       'shift_duration': (shiftDuration * 60).round(),
       'weather_condition': weatherCondition,
+      'is_active': isActive,
     };
     
     if (id != null && id!.isNotEmpty) {

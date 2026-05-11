@@ -403,11 +403,19 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                           underline: const SizedBox(),
                           dropdownColor: AppDesignSystem.surfaceContainerHigh,
                           icon: const Icon(Icons.expand_more, size: 18, color: AppDesignSystem.outline),
-                          items: [15, 30, 45, 60].map((int value) {
+                          items: ([15, 30, 45, 50, 60, 90, 120, _alertLeadTime].toSet().toList()..sort()).map((int value) {
+                            String label;
+                            if (value >= 60) {
+                              final h = value ~/ 60;
+                              final m = value % 60;
+                              label = m == 0 ? '$h ${h == 1 ? 'hour' : 'hours'} before' : '$h hr $m mins before';
+                            } else {
+                              label = '$value mins before';
+                            }
                             return DropdownMenuItem<int>(
                               value: value,
                               child: Text(
-                                value == 60 ? '1 hour before' : '$value mins before',
+                                label,
                                 style: const TextStyle(color: AppDesignSystem.primary, fontWeight: FontWeight.bold),
                               ),
                             );

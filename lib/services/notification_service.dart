@@ -3,6 +3,7 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:flutter/foundation.dart';
 import '../models/route_model.dart';
+import 'route_service.dart';
 import 'dart:io';
 
 class NotificationService {
@@ -53,6 +54,7 @@ class NotificationService {
         importance: Importance.max,
         playSound: true,
         enableVibration: true,
+        sound: RawResourceAndroidNotificationSound('horn'),
       );
 
       await androidImplementation?.createNotificationChannel(channel);
@@ -104,14 +106,26 @@ class NotificationService {
     // 2. Schedule for each driving day
     for (int day in route.drivingDays) {
       final int notificationId = (route.id.hashCode + day).abs();
-      // map 0-6 (Mon-Sun) to 1-7 (Mon-Sun)
-      final int dartDay = day + 1;
+      final int dartDay = day; // Use day directly (Expected 1-7)
+      final scheduledDate = _nextInstanceOfDayAndTime(dartDay, alertDateTime.hour, alertDateTime.minute);
       
+      debugPrint('DEBUG: Checking if today (${DateTime.now().weekday}) is in drivingDays: ${route.drivingDays}');
+      debugPrint('DEBUG: Target TZDateTime for Day $day: $scheduledDate');
+
+      // IMMEDIATE TEST RULE: If scheduled within 10 mins from now, fire immediately
+      bool fireNow = false;
+      final nowTZ = tz.TZDateTime.now(tz.local);
+      final diff = scheduledDate.difference(nowTZ).inMinutes;
+      if (diff >= 0 && diff <= 10) {
+        fireNow = true;
+        debugPrint('DEBUG: [IMMEDIATE TEST] Alert is within 10 mins ($diff mins). Triggering NOW.');
+      }
+
       await _notificationsPlugin.zonedSchedule(
         id: notificationId,
         title: 'Route Start Alert: ${route.originName}',
         body: 'Your shift to ${route.destinationName} starts soon. Check weather hazards!',
-        scheduledDate: _nextInstanceOfDayAndTime(dartDay, alertDateTime.hour, alertDateTime.minute),
+        scheduledDate: fireNow ? nowTZ.add(const Duration(seconds: 2)) : scheduledDate,
         notificationDetails: const NotificationDetails(
           android: AndroidNotificationDetails(
             'route_alerts_channel',
@@ -119,8 +133,11 @@ class NotificationService {
             channelDescription: 'Notifications for scheduled haul routes',
             importance: Importance.max,
             priority: Priority.high,
+            sound: RawResourceAndroidNotificationSound('horn'),
           ),
-          iOS: DarwinNotificationDetails(),
+          iOS: DarwinNotificationDetails(
+            sound: 'horn.mp3',
+          ),
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
@@ -132,13 +149,29 @@ class NotificationService {
   }
 
   Future<void> cancelRouteAlert(String routeId) async {
-    // We would need to know which IDs were used. 
-    // Usually we use routeId.hashCode + day. 
-    // To be safe, we can use a range or store them.
-    // For now, let's just cancel all for simplicity if IDs are not known, 
-    // or use a consistent hashing.
-    for (int day = 1; day <= 7; day++) {
+    // Cancel all IDs that could have been generated for this route
+    for (int day = 0; day <= 6; day++) {
       await _notificationsPlugin.cancel(id: (routeId.hashCode + day).abs());
+    }
+  }
+
+  Future<void> refreshScheduledNotifications() async {
+    // 1. Clear all existing alerts to avoid overlap
+    await _notificationsPlugin.cancelAll();
+    
+    // 2. Fetch latest active routes
+    try {
+      final routes = await RouteService().fetchRoutes();
+      
+      // 3. Re-schedule for each ACTIVE route
+      for (var route in routes) {
+        if (route.isActive) {
+          await scheduleRouteAlert(route);
+        }
+      }
+      debugPrint('DEBUG: Refresh complete for ${routes.length} routes.');
+    } catch (e) {
+      debugPrint('DEBUG: Failed to refresh notifications: $e');
     }
   }
 
@@ -176,6 +209,7 @@ class NotificationService {
       autoCancel: false,
       ongoing: true, // Prevents dismissal by tap or "Clear All"
       timeoutAfter: null,
+      sound: const RawResourceAndroidNotificationSound('horn'),
       actions: [
         const AndroidNotificationAction(
           'dismiss_summary',
@@ -197,7 +231,9 @@ class NotificationService {
       body: body,
       notificationDetails: NotificationDetails(
         android: androidDetails,
-        iOS: const DarwinNotificationDetails(),
+        iOS: const DarwinNotificationDetails(
+          sound: 'horn.mp3',
+        ),
       ),
     );
   }

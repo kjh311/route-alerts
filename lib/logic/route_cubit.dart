@@ -38,8 +38,8 @@ class RouteCubit extends Cubit<RouteState> {
       // Update local model with ID if it was a new insert
       final savedRoute = RouteModel.fromJson(response);
 
-      // Schedule Notifications
-      await NotificationService().scheduleRouteAlert(savedRoute);
+      // Refresh all notifications to stay in sync with latest changes
+      await NotificationService().refreshScheduledNotifications();
 
       emit(RouteSuccess());
     } catch (e) {

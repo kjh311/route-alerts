@@ -139,6 +139,67 @@ class _RouteCardState extends State<_RouteCard> {
     return widget.route.drivingDays.contains(dayNum);
   }
 
+  Future<void> _toggleActive(bool value) async {
+    try {
+      await Supabase.instance.client
+          .from('routes')
+          .update({'is_active': value})
+          .eq('id', widget.route.id!);
+      
+      // Force refresh of all background alarms
+      await NotificationService().refreshScheduledNotifications();
+      
+      widget.onUpdate();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update status: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteRoute() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppDesignSystem.surfaceContainer,
+        title: Text('DELETE ROUTE?', style: AppDesignSystem.headlineMedium),
+        content: const Text('Are you sure you want to delete this route? This will also cancel all scheduled alerts.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('CANCEL', style: TextStyle(color: AppDesignSystem.outline)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('DELETE', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await Supabase.instance.client
+            .from('routes')
+            .delete()
+            .eq('id', widget.route.id!);
+        
+        // Refresh notifications to remove deleted route alarms
+        await NotificationService().refreshScheduledNotifications();
+        
+        widget.onUpdate();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to delete route: $e')),
+          );
+        }
+      }
+    }
+  }
+
   Future<void> _getRouteWeather() async {
     setState(() => _isAuditing = true);
 
@@ -293,33 +354,87 @@ class _RouteCardState extends State<_RouteCard> {
                         ),
                       ),
                     ),
+                  // Top Action/Status Row
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${widget.route.originName} →',
-                              style: AppDesignSystem.labelBold.copyWith(color: AppDesignSystem.outline, fontSize: 10),
+                      Row(
+                        children: [
+                          Checkbox(
+                            value: widget.route.isActive,
+                            onChanged: (val) => _toggleActive(val ?? false),
+                            activeColor: AppDesignSystem.primary,
+                            visualDensity: VisualDensity.compact,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                          ),
+                          Text(
+                            widget.route.isActive ? 'ACTIVE' : 'INACTIVE',
+                            style: AppDesignSystem.labelBold.copyWith(
+                              color: widget.route.isActive ? AppDesignSystem.primary : AppDesignSystem.outline,
+                              fontSize: 10,
                             ),
-                            Text(
-                              widget.route.destinationName,
-                              style: AppDesignSystem.headlineLarge.copyWith(color: AppDesignSystem.primary, height: 1.2),
+                          ),
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppDesignSystem.surfaceContainerHigh,
+                          borderRadius: BorderRadius.circular(AppDesignSystem.radiusDefault),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined, size: 16, color: AppDesignSystem.secondary),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              onPressed: () async {
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => CreateRouteScreen(initialRoute: widget.route),
+                                  ),
+                                );
+                                widget.onUpdate();
+                              },
+                            ),
+                            const SizedBox(width: 12),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              onPressed: _deleteRoute,
+                            ),
+                            const SizedBox(width: 12),
+                            Icon(
+                              summary != null ? Icons.check_circle_outline : Icons.wb_sunny_outlined, 
+                              color: summary != null ? Colors.green : Colors.grey, 
+                              size: 16
                             ),
                           ],
                         ),
                       ),
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppDesignSystem.surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(12),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Trip Names Row
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${widget.route.originName} →',
+                        style: AppDesignSystem.labelBold.copyWith(
+                          color: widget.route.isActive ? AppDesignSystem.outline : AppDesignSystem.outline.withOpacity(0.3),
+                          fontSize: 10,
                         ),
-                        child: Icon(
-                          summary != null ? Icons.check_circle_outline : Icons.wb_sunny_outlined, 
-                          color: summary != null ? Colors.green : Colors.grey, 
-                          size: 20
+                      ),
+                      Text(
+                        widget.route.destinationName,
+                        style: AppDesignSystem.headlineLarge.copyWith(
+                          color: widget.route.isActive ? AppDesignSystem.primary : AppDesignSystem.primary.withOpacity(0.3),
+                          decoration: widget.route.isActive ? null : TextDecoration.lineThrough,
+                          height: 1.1,
                         ),
                       ),
                     ],
