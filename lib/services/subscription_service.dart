@@ -10,37 +10,46 @@ class SubscriptionService {
 
   /// Initialize RevenueCat SDK
   Future<void> init() async {
-    await Purchases.setLogLevel(LogLevel.debug);
+    // await Purchases.setLogLevel(LogLevel.debug);
 
-    PurchasesConfiguration? configuration;
+    // PurchasesConfiguration? configuration;
     
-    if (kIsWeb) {
-      debugPrint('DEBUG: RevenueCat initialization skipped on Web');
-      return;
-    }
+    // if (kIsWeb) {
+    //   debugPrint('DEBUG: RevenueCat initialization skipped on Web');
+    //   return;
+    // }
 
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      configuration = PurchasesConfiguration(AppConstants.googleApiKey);
-    } else if (defaultTargetPlatform == TargetPlatform.iOS) {
-      configuration = PurchasesConfiguration(AppConstants.appleApiKey);
-    }
+    // if (defaultTargetPlatform == TargetPlatform.android) {
+    //   configuration = PurchasesConfiguration(AppConstants.googleApiKey);
+    // } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+    //   configuration = PurchasesConfiguration(AppConstants.appleApiKey);
+    // }
 
-    if (configuration != null) {
-      await Purchases.configure(configuration);
-    }
-
+    // if (configuration != null) {
+    //   await Purchases.configure(configuration);
+    // }
+    debugPrint('DEBUG: RevenueCat initialization bypassed for development');
   }
 
   /// Check if the user has an active 'pro_alerts' entitlement
   Future<bool> isProActive() async {
-    try {
-      final CustomerInfo customerInfo = await Purchases.getCustomerInfo();
-      return customerInfo.entitlements.all[AppConstants.proEntitlementId]?.isActive ?? false;
-    } catch (e) {
-      debugPrint('Error fetching customer info: $e');
-      return false;
-    }
+    return true; // MOCKED FOR BYPASS
   }
+
+  /// Alias for isProActive
+  Future<bool> isPremium() async => true;
+
+  /// Alias for isProActive
+  Future<bool> checkEntitlements() async => true;
+
+  /// Mock for remaining routes in a billing cycle
+  int get remainingRoutes => 99;
+
+  /// Mock for total monthly route limit
+  int get monthlyLimit => 100;
+
+  /// Mock for any method fetching specific route counts
+  Future<int> getRemainingRoutesCount() async => 99;
 
   /// Identify user in RevenueCat (should match Supabase Auth UID)
   Future<void> logIn(String userId) async {

@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'dart:io';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_polyline_algorithm/google_polyline_algorithm.dart';
@@ -13,6 +15,7 @@ import '../widgets/location_search_field.dart';
 import '../services/maps_service.dart';
 import '../services/google_maps_loader.dart';
 import '../services/weather_service.dart';
+import '../services/notification_service.dart';
 
 class CreateRouteScreen extends StatefulWidget {
   final RouteModel? initialRoute;
@@ -45,10 +48,71 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
   TimeOfDay _startTime = const TimeOfDay(hour: 6, minute: 0);
   double _duration = 11.5;
   int _alertLeadTime = 30;
-  List<String> _selectedDays = [];
+  List<int> _selectedDays = [];
 
   final List<String> _daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  
+  final NotificationService _notificationService = NotificationService();
+
+  Future<bool> _ensurePermissions() async {
+    // 1. Check Notification Permission
+    bool hasNotify = await Permission.notification.isGranted;
+    if (!hasNotify) {
+      final status = await _notificationService.requestNotificationPermission();
+      if (!status) {
+        _showPermissionDeniedSnackbar('Notification');
+        return false;
+      }
+    }
+
+    // 2. Check Exact Alarm Permission (Android 13+)
+    if (!kIsWeb && Platform.isAndroid) {
+      bool hasExact = await _notificationService.requestExactAlarmsPermission();
+      if (!hasExact) {
+        _showPermissionDeniedSnackbar('Exact Alarm');
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  void _showPermissionDeniedSnackbar(String type) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$type permission is required for shift alerts.'),
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'SETTINGS',
+          onPressed: () => openAppSettings(),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showPermissionExplanationDialog() async {
+    return showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppDesignSystem.surfaceContainerHigh,
+        title: Text('ENABLE ALERTS', style: AppDesignSystem.headlineMedium),
+        content: Text(
+          'Route Alerts needs permission to send your daily weather and safety summary before your shift.',
+          style: AppDesignSystem.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('CANCEL', style: TextStyle(color: AppDesignSystem.outline)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(backgroundColor: AppDesignSystem.primary),
+            child: Text('GRANT ACCESS', style: TextStyle(color: AppDesignSystem.onPrimary)),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -58,12 +122,17 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       final route = widget.initialRoute!;
       _startController.text = route.originName;
       _endController.text = route.destinationName;
-      _startTime = TimeOfDay.fromDateTime(route.departureTime);
       _alertLeadTime = route.alertLeadMinutes;
       _generatedWaypoints = List<Map<String, dynamic>>.from(route.waypoints);
       _encodedPolyline = route.routePolyline;
-      _selectedDays = List<String>.from(route.drivingDays);
+      _selectedDays = List<int>.from(route.drivingDays);
       _duration = route.shiftDuration;
+      
+      // Parse departure time string HH:mm:ss
+      final parts = route.departureTime.split(':');
+      if (parts.length >= 2) {
+        _startTime = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+      }
       
       // Extract stats from waypoints if possible
       if (_generatedWaypoints.isNotEmpty) {
@@ -222,12 +291,31 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(wp['name'], style: AppDesignSystem.bodyLarge),
+                                        Row(
+                                          children: [
+                                            Expanded(child: Text(wp['name'], style: AppDesignSystem.bodyLarge)),
+                                            if (wp['weather'] != null) ...[
+                                              Image.network(
+                                                'https://openweathermap.org/img/wn/${wp['weather']['icon']}@2x.png',
+                                                width: 24,
+                                                height: 24,
+                                                errorBuilder: (_, __, ___) => const Icon(Icons.wb_sunny, size: 16),
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text('${(wp['weather']['temp'] as num).round()}°', 
+                                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                            ],
+                                          ],
+                                        ),
                                         Row(
                                           children: [
                                             if (!isFirst)
                                               Text('${wp['distance_from_origin_miles']} mi from origin', 
                                                 style: TextStyle(fontSize: 10, color: AppDesignSystem.outline.withOpacity(0.8))),
+                                            const Spacer(),
+                                            if (wp['weather'] != null && wp['weather']['hazard'] != '')
+                                              Text(wp['weather']['hazard'], 
+                                                style: const TextStyle(fontSize: 10, color: Colors.orange, fontWeight: FontWeight.bold)),
                                           ],
                                         ),
                                       ],
@@ -332,16 +420,17 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                 ),
                 const SizedBox(height: AppDesignSystem.gutter),
 
-                // Driving Days Selection
                 _buildBentoCard(
                   label: 'Days of the Week',
                   child: Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: _daysOfWeek.map((day) {
-                      final isSelected = _selectedDays.contains(day);
+                    children: [0, 1, 2, 3, 4, 5, 6].map((dayNum) {
+                      final dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                      final dayName = dayNames[dayNum];
+                      final isSelected = _selectedDays.contains(dayNum);
                       return FilterChip(
-                        label: Text(day, style: TextStyle(
+                        label: Text(dayName, style: TextStyle(
                           color: isSelected ? AppDesignSystem.onPrimary : AppDesignSystem.onSurfaceVariant,
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
@@ -350,9 +439,9 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                         onSelected: (selected) {
                           setState(() {
                             if (selected) {
-                              _selectedDays.add(day);
+                              _selectedDays.add(dayNum);
                             } else {
-                              _selectedDays.remove(day);
+                              _selectedDays.remove(dayNum);
                             }
                           });
                         },
@@ -535,6 +624,9 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       }
     });
 
+    debugPrint('DEBUG: City selection - Start: ${_startData?['description']} at ${_startData?['lat']},${_startData?['lng']}');
+    debugPrint('DEBUG: City selection - End: ${_endData?['description']} at ${_endData?['lat']},${_endData?['lng']}');
+
     if (_startData != null && _endData != null) {
       _generateRoute();
     }
@@ -551,20 +643,69 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
         startLng: _startData!['lng'],
         endLat: _endData!['lat'],
         endLng: _endData!['lng'],
+        startName: _startData!['name'],
+        endName: _endData!['name'],
       );
 
-      _encodedPolyline = result['polyline'];
-      _generatedWaypoints = List<Map<String, dynamic>>.from(result['waypoints']);
-      _totalDistanceMiles = result['total_distance_miles'];
-      _totalDurationMinutes = result['total_duration_minutes'];
+      debugPrint('DEBUG: Route Result received: $result');
+      
+      _encodedPolyline = result['polyline'] ?? '';
+      _generatedWaypoints = List<Map<String, dynamic>>.from(result['waypoints'] ?? []);
+      _totalDistanceMiles = (result['total_distance_miles'] as num?)?.toInt() ?? 0;
+      _totalDurationMinutes = (result['total_duration_minutes'] as num?)?.toInt() ?? 0;
+
+      debugPrint('DEBUG: Parsed stats - Distance: $_totalDistanceMiles, Duration: $_totalDurationMinutes');
+
+      if (_encodedPolyline.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No route found between these locations. Check your API key and connection.')),
+        );
+      }
 
       // Update Markers
       _updateMarkers();
 
-      setState(() => _isGeneratingRoute = false);
+      // NEW: Run Weather Audit for these waypoints
+      if (_generatedWaypoints.isNotEmpty) {
+        final weatherResult = await _weatherService.auditRouteWeather(
+          departureTime: DateTime(
+            DateTime.now().year,
+            DateTime.now().month,
+            DateTime.now().day,
+            _startTime.hour,
+            _startTime.minute,
+          ),
+          waypoints: _generatedWaypoints,
+          shiftDurationHours: _duration,
+          totalDistanceMiles: _totalDistanceMiles,
+        );
+        
+        setState(() {
+          // Merge weather alerts back into waypoints for display
+          final alerts = weatherResult['alerts'] as List<dynamic>;
+          for (var i = 0; i < _generatedWaypoints.length; i++) {
+            if (i < alerts.length) {
+              _generatedWaypoints[i]['weather'] = alerts[i];
+            }
+          }
+        });
+      }
+
+      setState(() {
+        _isGeneratingRoute = false;
+        // Immediate polyline update
+        _polylines.clear();
+        _polylines.add(Polyline(
+          polylineId: const PolylineId('route'),
+          points: _decodeEncodedPolyline(_encodedPolyline),
+          color: AppDesignSystem.primary,
+          width: 5,
+        ));
+      });
       
       final points = _decodeEncodedPolyline(_encodedPolyline);
-      Future.delayed(const Duration(milliseconds: 500), () => _fitBounds(points));
+      // Give the map a moment to render the polyline before zooming
+      Future.delayed(const Duration(milliseconds: 300), () => _fitBounds(points));
 
 
     } catch (e) {
@@ -637,7 +778,7 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
     }
   }
 
-  void _saveRoute(BuildContext context) {
+  Future<void> _saveRoute(BuildContext context) async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please log in first')));
@@ -646,25 +787,26 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
 
     final startTimeStr = '${_startTime.hour.toString().padLeft(2, '0')}:${_startTime.minute.toString().padLeft(2, '0')}:00';
 
-    final departureTime = DateTime(
-      DateTime.now().year,
-      DateTime.now().month,
-      DateTime.now().day,
-      _startTime.hour,
-      _startTime.minute,
-    );
-
     if (_selectedDays.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select at least one driving day')));
       return;
     }
+
+    // Check permissions first
+    final hasNotify = await Permission.notification.isGranted;
+    if (!hasNotify) {
+      await _showPermissionExplanationDialog();
+    }
+    
+    final permitted = await _ensurePermissions();
+    if (!permitted) return;
 
     final route = RouteModel(
       id: widget.initialRoute?.id,
       userId: userId,
       originName: _startController.text,
       destinationName: _endController.text,
-      departureTime: departureTime,
+      departureTime: startTimeStr,
       alertLeadMinutes: _alertLeadTime,
       waypoints: _generatedWaypoints,
       routePolyline: _encodedPolyline,
@@ -679,17 +821,24 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
   void _updateMarkers() {
     setState(() {
       _markers.clear();
-      for (var wp in _generatedWaypoints) {
+      for (int i = 0; i < _generatedWaypoints.length; i++) {
+        final wp = _generatedWaypoints[i];
+        final isStart = i == 0;
+        final isEnd = i == _generatedWaypoints.length - 1;
+        
         _markers.add(
           Marker(
-            markerId: MarkerId(wp['name']),
+            markerId: MarkerId(wp['name'] ?? 'Stop-$i'),
             position: LatLng(
-              (wp['lat'] as num).toDouble(), 
-              (wp['lng'] as num).toDouble()
+              (wp['lat'] as num?)?.toDouble() ?? 0.0, 
+              (wp['lng'] as num?)?.toDouble() ?? 0.0
+            ),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+              isStart ? BitmapDescriptor.hueGreen : (isEnd ? BitmapDescriptor.hueRed : BitmapDescriptor.hueAzure)
             ),
             infoWindow: InfoWindow(
-              title: wp['name'],
-              snippet: '${wp['distance_from_origin_miles']} mi from start',
+              title: wp['name'] ?? 'Unknown Stop',
+              snippet: isStart ? 'Origin' : (isEnd ? 'Destination' : '${wp['distance_from_origin_miles'] ?? 0} mi from start'),
             ),
           ),
         );

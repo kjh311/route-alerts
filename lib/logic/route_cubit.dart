@@ -1,6 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/route_model.dart';
+import '../services/notification_service.dart';
 
 abstract class RouteState {}
 
@@ -31,9 +32,14 @@ class RouteCubit extends Cubit<RouteState> {
 
       final map = route.toMap();
       map['user_id'] = userId;
-      if (route.id != null) map['id'] = route.id;
+      
+      final response = await _supabase.from('routes').upsert(map).select().single();
+      
+      // Update local model with ID if it was a new insert
+      final savedRoute = RouteModel.fromJson(response);
 
-      await _supabase.from('routes').upsert(map);
+      // Schedule Notifications
+      await NotificationService().scheduleRouteAlert(savedRoute);
 
       emit(RouteSuccess());
     } catch (e) {

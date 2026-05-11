@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_polyline_algorithm/google_polyline_algorithm.dart';
 import 'package:haul_alerts/services/js_stub.dart' if (dart.library.js) 'dart:js' as js;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../core/constants.dart';
 
 class MapsService {
@@ -17,63 +18,131 @@ class MapsService {
     required double startLng,
     required double endLat,
     required double endLng,
+    String? startName,
+    String? endName,
   }) async {
     // 1. Get Directions
     final directions = await _getDirections(startLat, startLng, endLat, endLng);
     if (directions == null) return {'waypoints': [], 'polyline': ''};
 
     final String encodedPolyline = directions['polyline'];
-    final double totalDistanceMeters = directions['distance_meters'].toDouble();
+    final double totalDistanceMeters = (directions['distance_meters'] as num?)?.toDouble() ?? 0.0;
     final double totalDistanceMiles = totalDistanceMeters / 1609.34;
 
     // 2. Decode Polyline
     final List<LatLng> points = _decodePolyline(encodedPolyline);
+    debugPrint('DEBUG: Decoded polyline into ${points.length} points');
 
-    // 3. Determine Sampling Interval (40 miles for < 200mi, 75 miles otherwise)
-    final double intervalMiles = totalDistanceMiles < 200 ? 40.0 : 75.0;
+    // 3. Determine Sampling Interval (50 miles per user request)
+    const double intervalMiles = 50.0;
     final double intervalMeters = intervalMiles * 1609.34;
 
     // 4. Sample Points along Polyline
     final sampledPoints = _samplePointsAlongPolyline(points, intervalMeters);
+    debugPrint('DEBUG: Sampled ${sampledPoints.length} points along route');
 
     // 5. Reverse Geocode & Deduplicate
     final List<Map<String, dynamic>> waypoints = [];
     final Set<String> seenCities = {};
 
-    // Helper to add a waypoint if unique
+    // Helper to add a waypoint with proximity and name de-duplication
     Future<void> addWaypoint(double lat, double lng, double distMeters) async {
-      final cityData = await _getCityFromCoords(lat, lng);
-      if (cityData != null) {
-        final cityName = cityData['name'];
-        if (!seenCities.contains(cityName)) {
-          waypoints.add({
-            'name': cityName,
-            'lat': lat,
-            'lng': lng,
-            'distance_from_origin_miles': (distMeters / 1609.34).round(),
-          });
-          seenCities.add(cityName);
+      try {
+        // 1. Try Nearby Search to "snap" to nearest town
+        final townData = await _findNearestTownNearby(lat, lng);
+        String? cityName = townData?['name'];
+        double finalLat = townData != null ? townData['lat'] : lat;
+        double finalLng = townData != null ? townData['lng'] : lng;
+
+        if (cityName == null) {
+          // Fallback to Geocode
+          final cityData = await _getCityFromCoords(lat, lng);
+          cityName = cityData?['name'];
         }
+
+        if (cityName != null) {
+          // PROXIMITY CHECK: Skip if within 1 mile (1609m) of any existing waypoint
+          bool tooClose = false;
+          for (var wp in waypoints) {
+            double distance = _haversineDistance(LatLng(finalLat, finalLng), LatLng(wp['lat'], wp['lng']));
+            if (distance < 1609.34) { 
+              tooClose = true;
+              break;
+            }
+          }
+
+          if (!tooClose && !seenCities.contains(cityName)) {
+            debugPrint('DEBUG: Adding unique waypoint: $cityName at $finalLat,$finalLng');
+            waypoints.add({
+              'name': cityName,
+              'lat': finalLat,
+              'lng': finalLng,
+              'distance_from_origin_miles': (distMeters / 1609.34).round(),
+            });
+            seenCities.add(cityName);
+          }
+        }
+      } catch (e) {
+        debugPrint('DEBUG: Error adding waypoint at $lat,$lng: $e');
       }
     }
 
-    // Explicitly add Start
+    // A. Process Start
     await addWaypoint(startLat, startLng, 0.0);
 
-    // Add In-between points
+    // B. Process In-Between points
     for (var point in sampledPoints) {
       await addWaypoint(point['lat'], point['lng'], point['distance_from_start']);
     }
 
-    // Explicitly add End
+    // C. Process End
     await addWaypoint(endLat, endLng, totalDistanceMeters);
+
+    final int totalDistMiles = totalDistanceMiles.isFinite ? totalDistanceMiles.round() : 0;
+    final double durationSecs = (directions['duration_seconds'] as num?)?.toDouble() ?? 0.0;
+    final int totalDurationMins = (durationSecs / 60).isFinite ? (durationSecs / 60).round() : 0;
 
     return {
       'waypoints': waypoints,
       'polyline': encodedPolyline,
-      'total_distance_miles': totalDistanceMiles.round(),
-      'total_duration_minutes': (directions['duration_seconds'] / 60).round(),
+      'total_distance_miles': totalDistMiles,
+      'total_duration_minutes': totalDurationMins,
     };
+  }
+
+  Future<Map<String, dynamic>?> _findNearestTownNearby(double lat, double lng) async {
+    const double radiusMeters = 32186.9; // 20 miles
+    final apiKey = kIsWeb ? _apiKey : (dotenv.env['ANDROID_MAPS_KEY'] ?? _apiKey);
+
+    try {
+      final response = await _dio.get(
+        'https://maps.googleapis.com/maps/api/place/nearbysearch/json',
+        queryParameters: {
+          'location': '$lat,$lng',
+          'radius': radiusMeters.toString(),
+          'type': 'locality',
+          'key': apiKey,
+        },
+        options: Options(
+          headers: {
+            'X-Android-Package': 'com.jh311.haul_alerts',
+            'X-Android-Cert': '86A5EF10AE192D3097FBFD6478648A862CC9E909',
+          },
+        ),
+      );
+
+      if (response.data['status'] == 'OK' && (response.data['results'] as List).isNotEmpty) {
+        final result = response.data['results'][0];
+        return {
+          'name': result['name'],
+          'lat': result['geometry']['location']['lat'],
+          'lng': result['geometry']['location']['lng'],
+        };
+      }
+    } catch (e) {
+      debugPrint('DEBUG: Nearby Search failed: $e');
+    }
+    return null;
   }
 
   Future<Map<String, dynamic>?> _getDirections(double startLat, double startLng, double endLat, double endLng) async {
@@ -128,26 +197,52 @@ class MapsService {
   }
 
   Future<Map<String, dynamic>?> _getDirectionsMobile(double startLat, double startLng, double endLat, double endLng) async {
+    final String apiKey = dotenv.env['ANDROID_MAPS_KEY'] ?? _apiKey;
+    
     final response = await _dio.get(
       'https://maps.googleapis.com/maps/api/directions/json',
       queryParameters: {
         'origin': '$startLat,$startLng',
         'destination': '$endLat,$endLng',
-        'key': _apiKey,
+        'key': apiKey,
         'mode': 'driving',
       },
+      options: Options(
+        headers: {
+          'X-Android-Package': 'com.jh311.haul_alerts',
+          'X-Android-Cert': '86A5EF10AE192D3097FBFD6478648A862CC9E909',
+        },
+      ),
     );
 
-    if (response.data['status'] == 'OK') {
+    debugPrint('DEBUG: Directions API Full Response: ${response.data}');
+
+    final String status = response.data['status'] ?? 'UNKNOWN';
+
+    if (status == 'OK' && (response.data['routes'] as List).isNotEmpty) {
       final route = response.data['routes'][0];
-      final leg = route['legs'][0];
+      final legs = route['legs'] as List?;
+      if (legs == null || legs.isEmpty) return null;
+      
+      final leg = legs[0];
+      debugPrint('DEBUG: Directions Leg Data: $leg');
+      
       return {
         'polyline': route['overview_polyline']['points'],
-        'distance_meters': leg['distance']['value'],
-        'duration_seconds': leg['duration']['value'],
+        'distance_meters': (leg['distance']?['value'] as num?)?.toInt() ?? 0,
+        'duration_seconds': (leg['duration']?['value'] as num?)?.toInt() ?? 0,
       };
+    } else {
+      final String status = response.data['status'] ?? 'UNKNOWN';
+      final String errorMessage = response.data['error_message'] ?? 'Check Google Cloud Console for billing and API activation.';
+      
+      debugPrint('CRITICAL: Directions API Failure');
+      debugPrint('STATUS: $status');
+      debugPrint('MESSAGE: $errorMessage');
+      
+      // We throw the specific message so the UI can display it in a snackbar
+      throw 'Directions API Error ($status): $errorMessage';
     }
-    return null;
   }
 
   Future<Map<String, dynamic>?> _getCityFromCoords(double lat, double lng) async {
@@ -199,31 +294,61 @@ class MapsService {
   }
 
   Future<Map<String, dynamic>?> _getCityFromCoordsMobile(double lat, double lng) async {
+    final String apiKey = dotenv.env['ANDROID_MAPS_KEY'] ?? _apiKey;
+    
     final response = await _dio.get(
       'https://maps.googleapis.com/maps/api/geocode/json',
       queryParameters: {
         'latlng': '$lat,$lng',
-        'key': _apiKey,
-        'result_type': 'locality|administrative_area_level_1',
+        'key': apiKey,
+        'result_type': 'locality|neighborhood|sublocality|administrative_area_level_1',
       },
+      options: Options(
+        headers: {
+          'X-Android-Package': 'com.jh311.haul_alerts',
+          'X-Android-Cert': '86A5EF10AE192D3097FBFD6478648A862CC9E909',
+        },
+      ),
     );
 
     if (response.data['status'] == 'OK' && (response.data['results'] as List).isNotEmpty) {
-      final result = response.data['results'][0];
+      final results = response.data['results'] as List;
       String cityName = '';
-      String stateCode = '';
       
-      for (var component in result['address_components']) {
-        final List types = component['types'];
-        if (types.contains('locality')) {
-          cityName = component['long_name'];
-        } else if (types.contains('administrative_area_level_1')) {
-          stateCode = component['short_name'];
+      // LOGIC: Scan all results to find an actual city/town/postal area
+      for (var res in results) {
+        final components = res['address_components'] as List;
+        for (var component in components) {
+          final List cTypes = component['types'];
+          
+          // BROADENED: Include cities, towns, and postal municipalities
+          if (cTypes.contains('locality') || 
+              cTypes.contains('sublocality_level_1') || 
+              cTypes.contains('administrative_area_level_3') ||
+              cTypes.contains('postal_town')) {
+            cityName = component['long_name'];
+            break; 
+          }
+        }
+        
+        if (cityName.isNotEmpty) break;
+      }
+      
+      // FALLBACK: If still nothing, try to find the street address or a specific point of interest
+      if (cityName.isEmpty) {
+        for (var res in results) {
+          final types = res['types'] as List;
+          if (!types.contains('administrative_area_level_1') && !types.contains('country')) {
+             cityName = res['address_components'][0]['long_name'];
+             break;
+          }
         }
       }
       
-      final label = cityName.isNotEmpty ? '$cityName${stateCode.isNotEmpty ? ', $stateCode' : ''}' : '';
-      return label.isNotEmpty ? {'name': label} : null;
+      debugPrint('DEBUG: Geocoded $lat,$lng to $cityName');
+      return cityName.isNotEmpty ? {'name': cityName} : null;
+    } else {
+      debugPrint('DEBUG: Geocode status: ${response.data['status']}');
     }
     return null;
   }

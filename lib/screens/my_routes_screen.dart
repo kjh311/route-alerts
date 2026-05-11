@@ -7,6 +7,7 @@ import 'create_route_screen.dart';
 import '../services/weather_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/ai_service.dart';
+import '../services/notification_service.dart';
 
 class MyRoutesScreen extends StatefulWidget {
   const MyRoutesScreen({super.key});
@@ -132,16 +133,27 @@ class _RouteCardState extends State<_RouteCard> {
 
   bool get _isActiveToday {
     final now = DateTime.now();
-    final dayName = DateFormat('EEE').format(now); // Mon, Tue, etc.
-    return widget.route.drivingDays.contains(dayName);
+    // Dart: 1 (Mon) - 7 (Sun)
+    // Supabase: 0 (Mon) - 6 (Sun)
+    final dayNum = now.weekday - 1; 
+    return widget.route.drivingDays.contains(dayNum);
   }
 
   Future<void> _getRouteWeather() async {
     setState(() => _isAuditing = true);
 
     try {
+      final parts = widget.route.departureTime.split(':');
+      final departureDateTime = DateTime(
+        DateTime.now().year,
+        DateTime.now().month,
+        DateTime.now().day,
+        int.parse(parts[0]),
+        int.parse(parts[1]),
+      );
+      
       final audit = await _weatherService.auditRouteWeather(
-        departureTime: widget.route.departureTime,
+        departureTime: departureDateTime,
         waypoints: List<Map<String, dynamic>>.from(widget.route.waypoints),
         shiftDurationHours: widget.route.shiftDuration,
         totalDistanceMiles: widget.route.waypoints.last['distance_from_origin_miles'] ?? 0,
@@ -151,6 +163,25 @@ class _RouteCardState extends State<_RouteCard> {
       try {
         final aiBriefing = await AIService().generateWeatherBriefing(audit);
         audit['ai_briefing'] = aiBriefing;
+
+        // NEW: Trigger Immediate Notification
+        final String title = 'Weather Briefing: ${widget.route.originName} to ${widget.route.destinationName}';
+        
+        // Ensure permissions
+        final hasPermission = await NotificationService().requestNotificationPermission();
+        if (hasPermission) {
+          await NotificationService().sendImmediateSummaryNotification(
+            title: title,
+            body: aiBriefing,
+          );
+        } else {
+          // Fallback UI if permission denied
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Notifications are disabled. Weather briefing saved to route detail.')),
+            );
+          }
+        }
       } catch (aiError) {
         debugPrint('DEBUG: AI Briefing generation failed: $aiError');
       }
@@ -195,9 +226,9 @@ class _RouteCardState extends State<_RouteCard> {
 
     if (peak == null) return 'Audit complete. No significant hazards found.';
 
-    final peakWind = peak['peak_wind'];
-    final city = peak['city'];
-    final severity = audit['status'];
+    final peakWind = (peak['peak_wind'] as num?)?.toDouble() ?? 0.0;
+    final city = peak['city'] ?? 'Unknown City';
+    final severity = audit['status'] ?? 'Unknown Status';
     final peakTime = peak['peak_time'] != null 
         ? DateFormat('h:mm a').format(DateTime.parse(peak['peak_time']))
         : 'Unknown Time';
@@ -208,8 +239,14 @@ class _RouteCardState extends State<_RouteCard> {
 
   @override
   Widget build(BuildContext context) {
-    final dateStr = DateFormat('EEE, MMM d').format(widget.route.departureTime).toUpperCase();
-    final timeStr = DateFormat('hh:mm a').format(widget.route.departureTime).toUpperCase();
+    final parts = widget.route.departureTime.split(':');
+    final dummyDate = DateTime(2000, 1, 1, int.parse(parts[0]), int.parse(parts[1]));
+    final timeStr = DateFormat('hh:mm a').format(dummyDate).toUpperCase();
+    
+    // Format driving days nicely
+    final dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final activeDaysStr = widget.route.drivingDays.map((d) => dayNames[d]).join(', ');
+    
     final summary = _parseBriefingSummary();
 
     return Container(
@@ -294,11 +331,13 @@ class _RouteCardState extends State<_RouteCard> {
                     children: [
                       const Icon(Icons.schedule, size: 16, color: AppDesignSystem.secondary),
                       const SizedBox(width: 8),
-                      Text(
-                        '$dateStr • $timeStr',
-                        style: AppDesignSystem.bodyMedium.copyWith(fontWeight: FontWeight.bold),
+                      Expanded(
+                        child: Text(
+                          '$activeDaysStr • $timeStr',
+                          style: AppDesignSystem.bodyMedium.copyWith(fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      const Spacer(),
                       const Icon(Icons.arrow_forward_ios, size: 14, color: AppDesignSystem.outline),
                     ],
                   ),

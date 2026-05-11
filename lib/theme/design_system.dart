@@ -86,6 +86,8 @@ class AppDesignSystem {
         color: onBackground,
       );
 
+  static TextStyle get labelLarge => labelBold;
+
   /// Returns the complete ThemeData for the application
   static ThemeData get themeData {
     return ThemeData(
