@@ -1,6 +1,7 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:flutter/foundation.dart';
 import '../models/route_model.dart';
 import 'route_service.dart';
@@ -15,6 +16,28 @@ class NotificationService {
 
   Future<void> init() async {
     tz.initializeTimeZones();
+    try {
+      final dynamic rawRes = await FlutterTimezone.getLocalTimezone();
+      final String rawTz = rawRes.toString();
+      
+      // Clean up "TimezoneInfo(name: America/Denver, ...)" string
+      String cleanTz = rawTz.contains('(') ? rawTz.split('(')[1].split(',')[0] : rawTz;
+      // Strip potential "name: " label if present
+      cleanTz = cleanTz.replaceFirst('name:', '').trim();
+      
+      try {
+        tz.setLocalLocation(tz.getLocation(cleanTz));
+        debugPrint('DEBUG: Local Timezone successfully set to: ${tz.local.name}');
+      } catch (e) {
+        debugPrint('WARNING: Could not find location for "$cleanTz". Falling back to America/Denver.');
+        tz.setLocalLocation(tz.getLocation('America/Denver'));
+        debugPrint('DEBUG: Local Timezone successfully set to: ${tz.local.name}');
+      }
+    } catch (e) {
+      debugPrint('ERROR: Failed to set local timezone: $e');
+      // If native fails, try to at least get a common US timezone or stay UTC but log it clearly
+      debugPrint('CRITICAL: App is defaulting to UTC. Notification times may be incorrect.');
+    }
     
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -34,9 +57,11 @@ class NotificationService {
     await _notificationsPlugin.initialize(
       settings: initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
-        if (response.actionId == 'dismiss_summary') {
-          _notificationsPlugin.cancel(id: response.id ?? 0);
-          debugPrint('DEBUG: Summary notification dismissed via action.');
+        if (response.actionId == 'dismiss_summary' || response.actionId == 'dismiss_action') {
+          _notificationsPlugin.cancel(response.id ?? 0);
+          debugPrint('DEBUG: Notification ${response.id} dismissed via action.');
+        } else {
+          debugPrint('DEBUG: Notification body tapped. Maintaining persistence.');
         }
       },
     );
@@ -47,10 +72,13 @@ class NotificationService {
           _notificationsPlugin.resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
       
+      // Delete old channels to force sound update
+      await androidImplementation?.deleteNotificationChannel('route_alerts_channel');
+      
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
-        'route_alerts_channel',
-        'Route Alerts',
-        description: 'Notifications for scheduled haul routes and weather summaries',
+        'shift_alerts_v1', // New ID to force sound update
+        'Shift Alerts',
+        description: 'High-priority shift reminders with custom sound',
         importance: Importance.max,
         playSound: true,
         enableVibration: true,
@@ -59,6 +87,11 @@ class NotificationService {
 
       await androidImplementation?.createNotificationChannel(channel);
     }
+
+    // 2. Start-up Logs (Timezone & Pending)
+    debugPrint('DEBUG: Timezone: ${tz.local.name}');
+    debugPrint('DEBUG: Current TZ Time: ${tz.TZDateTime.now(tz.local)}');
+    await checkPendingAlerts();
   }
 
   Future<bool> requestNotificationPermission() async {
@@ -99,17 +132,26 @@ class NotificationService {
     final int minute = int.parse(timeParts[1]);
 
     // Subtract lead minutes
-    DateTime now = DateTime.now();
-    DateTime departureDateTime = DateTime(now.year, now.month, now.day, hour, minute);
-    DateTime alertDateTime = departureDateTime.subtract(Duration(minutes: route.alertLeadMinutes));
+    tz.TZDateTime now = tz.TZDateTime.now(tz.local);
+    tz.TZDateTime departureDateTime = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
+    tz.TZDateTime alertDateTime = departureDateTime.subtract(Duration(minutes: route.alertLeadMinutes));
 
+    debugPrint('DEBUG: Wall Clock Time: ${now.toString()}');
+    debugPrint('DEBUG: Alert Base Time: ${alertDateTime.toString()}');
+    debugPrint('DEBUG: Starting schedule loop for route: ${route.originName}');
+    
     // 2. Schedule for each driving day
-    for (int day in route.drivingDays) {
+    for (int i = 1; i <= 7; i++) {
+      final isInDrivingDays = route.drivingDays.contains(i);
+      debugPrint('DEBUG: Checking Day $i: is it in driving_days? $isInDrivingDays');
+      
+      if (!isInDrivingDays) continue;
+
+      final int day = i;
       final int notificationId = (route.id.hashCode + day).abs();
       final int dartDay = day; // Use day directly (Expected 1-7)
       final scheduledDate = _nextInstanceOfDayAndTime(dartDay, alertDateTime.hour, alertDateTime.minute);
       
-      debugPrint('DEBUG: Checking if today (${DateTime.now().weekday}) is in drivingDays: ${route.drivingDays}');
       debugPrint('DEBUG: Target TZDateTime for Day $day: $scheduledDate');
 
       // IMMEDIATE TEST RULE: If scheduled within 10 mins from now, fire immediately
@@ -128,12 +170,20 @@ class NotificationService {
         scheduledDate: fireNow ? nowTZ.add(const Duration(seconds: 2)) : scheduledDate,
         notificationDetails: const NotificationDetails(
           android: AndroidNotificationDetails(
-            'route_alerts_channel',
-            'Route Alerts',
-            channelDescription: 'Notifications for scheduled haul routes',
+            'shift_alerts_v1',
+            'Shift Alerts',
+            channelDescription: 'High-priority shift reminders with custom sound',
             importance: Importance.max,
             priority: Priority.high,
+            ongoing: true,
+            autoCancel: false,
+            playSound: true,
             sound: RawResourceAndroidNotificationSound('horn'),
+            timeoutAfter: null,
+            styleInformation: const BigTextStyleInformation(''),
+            actions: [
+              AndroidNotificationAction('dismiss_action', 'Dismiss'),
+            ],
           ),
           iOS: DarwinNotificationDetails(
             sound: 'horn.mp3',
@@ -156,7 +206,13 @@ class NotificationService {
   }
 
   Future<void> refreshScheduledNotifications() async {
-    // 1. Clear all existing alerts to avoid overlap
+    // 1. Ensure Exact Alarm permission is granted for Android 14+
+    final permissionGranted = await requestExactAlarmsPermission();
+    if (!permissionGranted) {
+      debugPrint('WARNING: Exact Alarm permission NOT granted. Alerts may be delayed.');
+    }
+
+    // 2. Clear all existing alerts to avoid overlap
     await _notificationsPlugin.cancelAll();
     
     // 2. Fetch latest active routes
@@ -173,6 +229,20 @@ class NotificationService {
     } catch (e) {
       debugPrint('DEBUG: Failed to refresh notifications: $e');
     }
+    
+    // 4. Final Audit
+    await checkPendingAlerts();
+  }
+
+  Future<void> checkPendingAlerts() async {
+    final List<PendingNotificationRequest> pending = 
+        await _notificationsPlugin.pendingNotificationRequests();
+    
+    debugPrint('--- PENDING NOTIFICATIONS AUDIT (Count: ${pending.length}) ---');
+    for (var p in pending) {
+      debugPrint('ID: ${p.id} | Title: ${p.title} | Payload: ${p.payload}');
+    }
+    debugPrint('--- END AUDIT ---');
   }
 
   tz.TZDateTime _nextInstanceOfDayAndTime(int day, int hour, int minute) {
@@ -201,14 +271,15 @@ class NotificationService {
     required String body,
   }) async {
     final androidDetails = AndroidNotificationDetails(
-      'route_alerts_channel',
-      'Route Alerts',
-      channelDescription: 'Notifications for scheduled haul routes',
+      'shift_alerts_v1',
+      'Shift Alerts',
+      channelDescription: 'High-priority shift reminders with custom sound',
       importance: Importance.max,
       priority: Priority.high,
       autoCancel: false,
       ongoing: true, // Prevents dismissal by tap or "Clear All"
       timeoutAfter: null,
+      playSound: true,
       sound: const RawResourceAndroidNotificationSound('horn'),
       actions: [
         const AndroidNotificationAction(

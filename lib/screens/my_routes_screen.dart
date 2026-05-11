@@ -406,12 +406,6 @@ class _RouteCardState extends State<_RouteCard> {
                               constraints: const BoxConstraints(),
                               onPressed: _deleteRoute,
                             ),
-                            const SizedBox(width: 12),
-                            Icon(
-                              summary != null ? Icons.check_circle_outline : Icons.wb_sunny_outlined, 
-                              color: summary != null ? Colors.green : Colors.grey, 
-                              size: 16
-                            ),
                           ],
                         ),
                       ),
