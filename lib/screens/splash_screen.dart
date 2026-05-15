@@ -56,7 +56,11 @@ class _SplashScreenState extends State<SplashScreen> {
       await SubscriptionService().init();
 
       debugPrint('DEBUG: Initializing NotificationService...');
-      await NotificationService().init();
+      final notificationService = NotificationService();
+      await notificationService.init();
+      
+      debugPrint('DEBUG: Refreshing Notification Schedule...');
+      await notificationService.refreshScheduledNotifications();
       
       debugPrint('DEBUG: All services initialized');
     } catch (e) {
@@ -78,49 +82,53 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Exact background color from Image_1.png to ensure seamless blending
+    const Color midnightNavy = Color(0xFF0B172A);
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0B172A), // Deep Midnight Navy from image
-      body: Stack(
-        children: [
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Logo Container - Larger and cleaner
-                SizedBox(
-                  width: 320, 
-                  height: 320,
-                  child: Image.asset(
-                    'assets/images/logo.png',
-                    fit: BoxFit.contain, // Contain keeps aspect ratio of the truck
-                  ),
+      backgroundColor: midnightNavy,
+      body: Center(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Large Hero Truck - Now part of the background, not in an icon box
+              SizedBox(
+                width: MediaQuery.of(context).size.width,
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  fit: BoxFit.contain, // Stays sharp and centered
                 ),
-                const SizedBox(height: 10),
-                // Title
-                Text(
-                  'Haul Alerts',
-                  style: GoogleFonts.roboto(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 48, // Significantly larger to match image
-                    letterSpacing: -0.5,
+              ),
+              const SizedBox(height: 20),
+              // Brand Typography
+              Column(
+                children: [
+                  Text(
+                    'Haul Alerts',
+                    style: GoogleFonts.roboto(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 48,
+                      letterSpacing: -0.5,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 24),
-                // Subtitle
-                Text(
-                  'PRECISION ROUTING & SAFETY',
-                  style: GoogleFonts.roboto(
-                    color: const Color(0xFFE67E22), // Signature Safety Orange
-                    letterSpacing: 4.0,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
+                  const SizedBox(height: 16),
+                  Text(
+                    'PRECISION ROUTING & SAFETY',
+                    style: GoogleFonts.roboto(
+                      color: const Color(0xFFE67E22), // Signature Safety Orange
+                      letterSpacing: 4.0,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+              const SizedBox(height: 100), // Push content up slightly
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

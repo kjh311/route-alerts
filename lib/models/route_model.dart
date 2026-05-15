@@ -11,7 +11,7 @@ class RouteModel {
   final String routePolyline;
   final List<int> drivingDays; // 0 (Mon) - 6 (Sun)
   final int delayMinutes;
-  final Map<String, dynamic>? weatherCondition;
+  Map<String, dynamic>? weatherCondition;
   final double shiftDuration;
   final bool isActive;
   final DateTime? updatedAt;

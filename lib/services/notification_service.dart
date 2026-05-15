@@ -7,6 +7,9 @@ import '../models/route_model.dart';
 import 'route_service.dart';
 import 'dart:io';
 import 'dart:convert';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'weather_service.dart';
+import 'ai_service.dart';
 import '../main.dart';
 import '../theme/design_system.dart';
 import 'package:flutter/material.dart';
@@ -93,9 +96,20 @@ class NotificationService {
       await androidImplementation?.createNotificationChannel(channel);
     }
 
-    // 2. Start-up Logs (Timezone & Pending)
+    // 1. Diagnostics & Permissions
     debugPrint('DEBUG: Timezone: ${tz.local.name}');
-    debugPrint('DEBUG: Current TZ Time: ${tz.TZDateTime.now(tz.local)}');
+    final now = tz.TZDateTime.now(tz.local);
+    debugPrint('DEBUG: Current TZ Time: $now');
+    debugPrint('DEBUG: Current Wall Clock: ${DateTime.now()}');
+
+    // Proactively request exact alarm permission on startup
+    final bool hasExactAlarm = await requestExactAlarmsPermission();
+    debugPrint('DEBUG: Exact Alarm Permission Status: $hasExactAlarm');
+    
+    // Proactively request notification permission
+    final bool hasNotification = await requestNotificationPermission();
+    debugPrint('DEBUG: Notification Permission Status: $hasNotification');
+
     await checkPendingAlerts();
   }
 
@@ -145,7 +159,14 @@ class NotificationService {
     debugPrint('DEBUG: Alert Base Time: ${alertDateTime.toString()}');
     debugPrint('DEBUG: Starting schedule loop for route: ${route.originName}');
     
-    // 2. Schedule for each driving day
+    // Extract cached AI briefing if available
+    final Map<String, dynamic>? audit = route.weatherCondition;
+    final String? cachedBriefing = audit?['ai_briefing']?.toString();
+    
+    final String aiBriefing = cachedBriefing ?? 
+        'Safety Audit Pending: Tap to generate today\'s AI weather summary for this route.';
+        
+    final String displayTitle = 'HAUL BRIEFING: ${route.originName}';
     for (int i = 1; i <= 7; i++) {
       final isInDrivingDays = route.drivingDays.contains(i);
       debugPrint('DEBUG: Checking Day $i: is it in driving_days? $isInDrivingDays');
@@ -170,10 +191,10 @@ class NotificationService {
 
       await _notificationsPlugin.zonedSchedule(
         id: notificationId,
-        title: 'Route Start Alert: ${route.originName}',
-        body: 'Your shift to ${route.destinationName} starts soon. Check weather hazards!',
+        title: displayTitle,
+        body: aiBriefing,
         scheduledDate: fireNow ? nowTZ.add(const Duration(seconds: 2)) : scheduledDate,
-        notificationDetails: const NotificationDetails(
+        notificationDetails: NotificationDetails(
           android: AndroidNotificationDetails(
             'shift_alerts_v1',
             'Shift Alerts',
@@ -183,14 +204,18 @@ class NotificationService {
             ongoing: true,
             autoCancel: false,
             playSound: true,
-            sound: RawResourceAndroidNotificationSound('horn'),
+            sound: const RawResourceAndroidNotificationSound('horn'),
             timeoutAfter: null,
-            styleInformation: const BigTextStyleInformation(''),
-            actions: [
+            styleInformation: BigTextStyleInformation(
+              aiBriefing,
+              contentTitle: displayTitle,
+              summaryText: 'Haul Weather Briefing',
+            ),
+            actions: const [
               AndroidNotificationAction('dismiss_action', 'Dismiss'),
             ],
           ),
-          iOS: DarwinNotificationDetails(
+          iOS: const DarwinNotificationDetails(
             sound: 'horn.mp3',
           ),
         ),
@@ -198,8 +223,8 @@ class NotificationService {
         matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
         payload: jsonEncode({
           'type': 'scheduled',
-          'title': 'Shift Start Alert: ${route.originName}',
-          'body': 'Your shift to ${route.destinationName} starts soon. Check weather hazards!',
+          'title': displayTitle,
+          'body': aiBriefing,
           'routeId': route.id,
         }),
       );
@@ -228,14 +253,73 @@ class NotificationService {
     // 2. Fetch latest active routes
     try {
       final routes = await RouteService().fetchRoutes();
+      debugPrint('DEBUG: Refreshing ${routes.length} total routes from DB.');
+      
+      final weatherService = WeatherService();
+      final aiService = AIService();
+      final now = DateTime.now();
       
       // 3. Re-schedule for each ACTIVE route
+      int scheduledCount = 0;
       for (var route in routes) {
         if (route.isActive) {
-          await scheduleRouteAlert(route);
+          debugPrint('DEBUG: Processing active route: ${route.originName}');
+          
+          // CHECK FOR STALE DATA: If checked yesterday or older, re-audit now
+          bool isStale = true;
+          final lastCheckedStr = route.weatherCondition?['last_checked'];
+          if (lastCheckedStr != null) {
+            final lastChecked = DateTime.parse(lastCheckedStr);
+            if (lastChecked.year == now.year && 
+                lastChecked.month == now.month && 
+                lastChecked.day == now.day) {
+              isStale = false;
+            }
+          }
+
+          if (isStale) {
+            debugPrint('DEBUG: [STALE DATA] Auditing route ${route.originName} automatically...');
+            try {
+              final timeParts = route.departureTime.split(':');
+              final departureDateTime = DateTime(now.year, now.month, now.day, 
+                  int.parse(timeParts[0]), int.parse(timeParts[1]));
+
+              // 1. Fetch fresh weather
+              final audit = await weatherService.auditRouteWeather(
+                departureTime: departureDateTime,
+                waypoints: List<Map<String, dynamic>>.from(route.waypoints),
+                shiftDurationHours: route.shiftDuration,
+                totalDistanceMiles: route.waypoints.last['distance_from_origin_miles'] ?? 0,
+              );
+
+              // 2. Generate new AI briefing
+              final aiBriefing = await aiService.generateWeatherBriefing(audit);
+              audit['ai_briefing'] = aiBriefing;
+
+              // 3. Update Supabase (Overwrite)
+              await Supabase.instance.client
+                  .from('routes')
+                  .update({'weather_condition': audit})
+                  .eq('id', route.id!);
+              
+              // 4. Update the local route object for scheduling below
+              route.weatherCondition = audit;
+              debugPrint('DEBUG: [AUTO-AUDIT COMPLETED] for ${route.originName}');
+            } catch (auditError) {
+              debugPrint('WARNING: Auto-audit failed for ${route.id}: $auditError');
+            }
+          }
+
+          debugPrint('DEBUG: Scheduling alert for route: ${route.originName}');
+          try {
+            await scheduleRouteAlert(route);
+            scheduledCount++;
+          } catch (e) {
+            debugPrint('ERROR: Failed to schedule alert ${route.id}: $e');
+          }
         }
       }
-      debugPrint('DEBUG: Refresh complete for ${routes.length} routes.');
+      debugPrint('DEBUG: Refresh complete. Scheduled $scheduledCount active routes.');
     } catch (e) {
       debugPrint('DEBUG: Failed to refresh notifications: $e');
     }

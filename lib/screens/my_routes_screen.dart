@@ -26,10 +26,12 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
     _routesFuture = _routeService.fetchRoutes();
   }
 
-  void _reloadRoutes() {
+  void _reloadRoutes() async {
     setState(() {
       _routesFuture = _routeService.fetchRoutes();
     });
+    // Ensure background alarms are synced with latest weather audits
+    await NotificationService().refreshScheduledNotifications();
   }
 
   @override
