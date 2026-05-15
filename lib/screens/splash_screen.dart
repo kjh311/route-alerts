@@ -92,13 +92,12 @@ class _SplashScreenState extends State<SplashScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Large Hero Truck - Now part of the background, not in an icon box
-              SizedBox(
+              // Large Hero Truck - Full width, no nested framing
+              Image.asset(
+                'assets/images/logo.png',
                 width: MediaQuery.of(context).size.width,
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  fit: BoxFit.contain, // Stays sharp and centered
-                ),
+                fit: BoxFit.cover,
+                alignment: Alignment.center,
               ),
               const SizedBox(height: 20),
               // Brand Typography

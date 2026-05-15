@@ -46,7 +46,8 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
           ),
         ],
       ),
-      body: FutureBuilder<List<RouteModel>>(
+      body: SafeArea(
+        child: FutureBuilder<List<RouteModel>>(
         future: _routesFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -115,7 +116,7 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
           );
         },
       ),
-    );
+    ));
   }
 }
 
@@ -132,6 +133,7 @@ class _RouteCard extends StatefulWidget {
 class _RouteCardState extends State<_RouteCard> {
   final WeatherService _weatherService = WeatherService();
   bool _isAuditing = false;
+  bool _showAiSummary = false;
 
   bool get _isActiveToday {
     final now = DateTime.now();
@@ -420,9 +422,9 @@ class _RouteCardState extends State<_RouteCard> {
                     children: [
                       Text(
                         '${widget.route.originName} →',
-                        style: AppDesignSystem.labelBold.copyWith(
-                          color: widget.route.isActive ? AppDesignSystem.outline : AppDesignSystem.outline.withOpacity(0.3),
-                          fontSize: 10,
+                        style: AppDesignSystem.headlineMedium.copyWith(
+                          color: widget.route.isActive ? AppDesignSystem.onSurfaceVariant : AppDesignSystem.onSurfaceVariant.withOpacity(0.5),
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       Text(
@@ -497,15 +499,34 @@ class _RouteCardState extends State<_RouteCard> {
                         child: CircularProgressIndicator(strokeWidth: 2, color: AppDesignSystem.primary),
                       ),
                     )
-                  else if (summary != null)
-                    Text(
-                      summary,
-                      style: AppDesignSystem.bodyMedium.copyWith(
-                        color: summary.contains('Critical') ? Colors.redAccent : AppDesignSystem.onSurface,
-                        fontWeight: summary.contains('Critical') ? FontWeight.bold : FontWeight.normal,
-                      ),
-                    )
-                  else
+                   else if (summary != null)
+                     InkWell(
+                       onTap: () => setState(() => _showAiSummary = !_showAiSummary),
+                       child: Column(
+                         crossAxisAlignment: CrossAxisAlignment.start,
+                         children: [
+                           Row(
+                             children: [
+                               Icon(_showAiSummary ? Icons.expand_less : Icons.expand_more, color: AppDesignSystem.primary, size: 20),
+                               const SizedBox(width: 4),
+                               Text(
+                                 'AI SUMMARY',
+                                 style: AppDesignSystem.labelBold.copyWith(color: AppDesignSystem.primary, fontSize: 12),
+                               ),
+                             ],
+                           ),
+                           if (_showAiSummary)
+                             Padding(
+                               padding: const EdgeInsets.only(top: 8.0),
+                               child: Text(
+                                 (widget.route.weatherCondition?['ai_briefing'] as String?) ?? 'AI summary not available.',
+                                 style: AppDesignSystem.bodyMedium.copyWith(color: AppDesignSystem.onSurfaceVariant),
+                               ),
+                             ),
+                         ],
+                       ),
+                     )
+                   else
                     ElevatedButton(
                       onPressed: _getRouteWeather,
                       style: ElevatedButton.styleFrom(

@@ -23,12 +23,14 @@ class _NavigationShellState extends State<NavigationShell> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _pages[_currentIndex],
-      bottomNavigationBar: Container(
-        height: 72,
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: Color(0xFF333333), width: 2)),
-        ),
-        child: BottomNavigationBar(
+      bottomNavigationBar: SafeArea(
+        bottom: true,
+        child: Container(
+          height: 72,
+          decoration: const BoxDecoration(
+            border: Border(top: BorderSide(color: Color(0xFF333333), width: 2)),
+          ),
+          child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (index) {
             setState(() {
@@ -45,7 +47,8 @@ class _NavigationShellState extends State<NavigationShell> {
             _buildNavItem(Icons.dashboard, 'Dashboard', 0),
             _buildNavItem(Icons.local_shipping, 'Routes', 1),
             _buildNavItem(Icons.person, 'Profile', 2),
-          ],
+            ],
+          ),
         ),
       ),
       floatingActionButton: _currentIndex == 1

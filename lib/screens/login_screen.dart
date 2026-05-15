@@ -37,10 +37,11 @@ class _LoginScreenState extends State<LoginScreen> {
         decoration: const BoxDecoration(
           color: AppDesignSystem.background,
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             // Logo or App Name
             Center(
               child: Column(
@@ -112,6 +113,6 @@ class _LoginScreenState extends State<LoginScreen> {
           ],
         ),
       ),
-    );
+    ));
   }
 }
