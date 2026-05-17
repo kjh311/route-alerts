@@ -76,10 +76,29 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
         _totalDurationMinutes = (_totalDistanceMiles / 60 * 60).round();
       }
       
-      _startData = {'description': route.originName};
-      _endData = {'description': route.destinationName};
+      _startData = {
+        'description': route.originName,
+        'name': route.originName,
+        'lat': _generatedWaypoints.isNotEmpty ? _generatedWaypoints.first['lat'] : null,
+        'lng': _generatedWaypoints.isNotEmpty ? _generatedWaypoints.first['lng'] : null,
+      };
+      _endData = {
+        'description': route.destinationName,
+        'name': route.destinationName,
+        'lat': _generatedWaypoints.isNotEmpty ? _generatedWaypoints.last['lat'] : null,
+        'lng': _generatedWaypoints.isNotEmpty ? _generatedWaypoints.last['lng'] : null,
+      };
       
       final points = _decodeEncodedPolyline(_encodedPolyline);
+      if (points.isNotEmpty) {
+        _polylines.add(Polyline(
+          polylineId: PolylineId('route'),
+          points: points,
+          color: const Color(0xFFE67E22),
+          width: 4,
+        ));
+      }
+
       _updateMarkers();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _fitBounds(points);

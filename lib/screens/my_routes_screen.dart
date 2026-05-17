@@ -63,7 +63,7 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
             );
             _reloadRoutes();
           },
-          child: const Icon(CupertinoIcons.add, color: Color(0xFFE67E22)),
+          child: const Icon(CupertinoIcons.add, color: Color(0xFFE67E22), size: 28),
         ),
         middle: const Text(
           'MY ROUTES',
@@ -483,28 +483,29 @@ class _RouteCardState extends State<_RouteCard> {
           
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF000000),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF333333)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'SAFETY BRIEFING',
-                    style: TextStyle(color: CupertinoColors.systemGrey, fontSize: 10, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  if (_isAuditing)
-                    const Center(child: CupertinoActivityIndicator())
-                  else if (summary != null)
-                    GestureDetector(
-                      onTap: () => setState(() => _showAiSummary = !_showAiSummary),
-                      child: Column(
+            child: GestureDetector(
+              onTap: summary != null ? () => setState(() => _showAiSummary = !_showAiSummary) : null,
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF000000),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF333333)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'SAFETY BRIEFING',
+                      style: TextStyle(color: CupertinoColors.systemGrey, fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 12),
+                    if (_isAuditing)
+                      const Center(child: CupertinoActivityIndicator())
+                    else if (summary != null)
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
@@ -530,15 +531,15 @@ class _RouteCardState extends State<_RouteCard> {
                               ),
                             ),
                         ],
+                      )
+                    else
+                      CupertinoButton.filled(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        onPressed: _getRouteWeather,
+                        child: const Text('GET WEATHER AUDIT', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                       ),
-                    )
-                  else
-                    CupertinoButton.filled(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      onPressed: _getRouteWeather,
-                      child: const Text('GET WEATHER AUDIT', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
