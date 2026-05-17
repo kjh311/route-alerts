@@ -13,6 +13,7 @@ import 'ai_service.dart';
 import '../main.dart';
 import '../theme/design_system.dart';
 import 'package:flutter/material.dart';
+import '../screens/navigation_shell.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -68,8 +69,20 @@ class NotificationService {
           _notificationsPlugin.cancel(id: response.id ?? 0);
           debugPrint('DEBUG: Notification ${response.id} dismissed via action.');
         } else if (response.payload != null) {
-          _showBriefingDialog(response.payload!);
-          debugPrint('DEBUG: Notification body tapped. Showing full briefing.');
+          final data = jsonDecode(response.payload!);
+          final routeId = data['routeId'] as String?;
+          final context = navigatorKey.currentContext;
+          if (context != null && routeId != null) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(
+                builder: (_) => NavigationShell(focusRouteId: routeId),
+              ),
+              (route) => false,
+            );
+            debugPrint('DEBUG: Navigated to routes with focus on $routeId and will open AI summary.');
+          } else if (response.payload != null) {
+            _showBriefingDialog(response.payload!);
+          }
         }
       },
     );

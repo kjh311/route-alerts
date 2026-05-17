@@ -2,21 +2,22 @@ import 'package:flutter/material.dart';
 import '../theme/design_system.dart';
 import 'create_route_screen.dart';
 import 'my_routes_screen.dart';
+import 'profile_screen.dart';
 
 class NavigationShell extends StatefulWidget {
-  const NavigationShell({super.key});
+  final String? focusRouteId;
+  const NavigationShell({super.key, this.focusRouteId});
 
   @override
   State<NavigationShell> createState() => _NavigationShellState();
 }
 
 class _NavigationShellState extends State<NavigationShell> {
-  int _currentIndex = 1; // Default to My Routes per common app patterns for this task
+  int _currentIndex = 0; // Routes is now the only main tab after removing Dashboard
 
-  final List<Widget> _pages = [
-    const PlaceholderScreen(title: 'Dashboard'),
-    const MyRoutesScreen(),
-    const PlaceholderScreen(title: 'Profile'),
+  List<Widget> get _pages => [
+    MyRoutesScreen(focusRouteId: widget.focusRouteId),
+    const ProfileScreen(),
   ];
 
   @override
@@ -44,14 +45,13 @@ class _NavigationShellState extends State<NavigationShell> {
           unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
           type: BottomNavigationBarType.fixed,
           items: [
-            _buildNavItem(Icons.dashboard, 'Dashboard', 0),
-            _buildNavItem(Icons.local_shipping, 'Routes', 1),
-            _buildNavItem(Icons.person, 'Profile', 2),
+            _buildNavItem(Icons.local_shipping, 'Routes', 0),
+            _buildNavItem(Icons.person, 'Profile', 1),
             ],
           ),
         ),
       ),
-      floatingActionButton: _currentIndex == 1
+      floatingActionButton: _currentIndex == 0
           ? FloatingActionButton(
               onPressed: () {
                 Navigator.push(
@@ -86,26 +86,6 @@ class _NavigationShellState extends State<NavigationShell> {
         ),
       ),
       label: '', // Label is handled inside the icon container for full-width background effect
-    );
-  }
-}
-
-class PlaceholderScreen extends StatelessWidget {
-  final String title;
-  const PlaceholderScreen({super.key, required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(title, style: AppDesignSystem.headlineMedium),
-      ),
-      body: Center(
-        child: Text(
-          'Coming Soon: $title',
-          style: AppDesignSystem.bodyLarge,
-        ),
-      ),
     );
   }
 }

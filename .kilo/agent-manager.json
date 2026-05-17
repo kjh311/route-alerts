@@ -1,9 +1,25 @@
 {
-  "worktrees": {},
-  "sessions": {},
+  "worktrees": {
+    "wt-1778890053927-1": {
+      "branch": "spring-phone",
+      "path": "/Users/kevin/study/route-alerts/.kilo/worktrees/spring-phone",
+      "parentBranch": "main",
+      "createdAt": "2026-05-16T00:07:33.927Z",
+      "remote": "origin"
+    }
+  },
+  "sessions": {
+    "ses_1d1e3e5e2ffeh3KykqSXtX23n6": {
+      "worktreeId": "wt-1778890053927-1",
+      "createdAt": "2026-05-16T00:07:36.873Z"
+    }
+  },
   "tabOrder": {
     "local": [
       "pending:1"
     ]
-  }
+  },
+  "worktreeOrder": [
+    "wt-1778890053927-1"
+  ]
 }

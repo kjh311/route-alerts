@@ -94,7 +94,7 @@ class _SplashScreenState extends State<SplashScreen> {
             children: [
               // Large Hero Truck - Full width, no nested framing
               Image.asset(
-                'assets/images/logo.png',
+                'assets/images/logo.jpeg',
                 width: MediaQuery.of(context).size.width,
                 fit: BoxFit.cover,
                 alignment: Alignment.center,

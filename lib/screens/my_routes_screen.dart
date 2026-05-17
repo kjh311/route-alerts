@@ -10,7 +10,8 @@ import '../services/ai_service.dart';
 import '../services/notification_service.dart';
 
 class MyRoutesScreen extends StatefulWidget {
-  const MyRoutesScreen({super.key});
+  final String? focusRouteId;
+  const MyRoutesScreen({super.key, this.focusRouteId});
 
   @override
   State<MyRoutesScreen> createState() => _MyRoutesScreenState();
@@ -19,6 +20,8 @@ class MyRoutesScreen extends StatefulWidget {
 class _MyRoutesScreenState extends State<MyRoutesScreen> {
   final RouteService _routeService = RouteService();
   late Future<List<RouteModel>> _routesFuture;
+  final ScrollController _scrollController = ScrollController();
+  final Map<String?, GlobalKey> _cardKeys = {};
 
   @override
   void initState() {
@@ -30,8 +33,20 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
     setState(() {
       _routesFuture = _routeService.fetchRoutes();
     });
-    // Ensure background alarms are synced with latest weather audits
-    await NotificationService().refreshScheduledNotifications();
+  }
+
+  void _scrollToRoute(String routeId) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final key = _cardKeys[routeId];
+      if (key?.currentContext != null) {
+        Scrollable.ensureVisible(
+          key!.currentContext!,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOut,
+          alignment: 0.1,
+        );
+      }
+    });
   }
 
   @override
@@ -39,6 +54,7 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('MY ROUTES'),
+        automaticallyImplyLeading: false,
         actions: [
           IconButton(
             onPressed: _reloadRoutes,
@@ -103,14 +119,24 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
             );
           }
 
+          // Auto focus on notification tap
+          if (widget.focusRouteId != null) {
+            _scrollToRoute(widget.focusRouteId!);
+          }
+
           return ListView.separated(
+            controller: _scrollController,
             padding: const EdgeInsets.all(AppDesignSystem.marginEdge),
             itemCount: routes.length,
             separatorBuilder: (context, index) => const SizedBox(height: 16),
             itemBuilder: (context, index) {
+              final route = routes[index];
+              _cardKeys[route.id] = GlobalKey();
               return _RouteCard(
-                route: routes[index],
+                key: _cardKeys[route.id],
+                route: route,
                 onUpdate: _reloadRoutes,
+                autoExpandAiSummary: widget.focusRouteId == route.id,
               );
             },
           );
@@ -123,8 +149,14 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
 class _RouteCard extends StatefulWidget {
   final RouteModel route;
   final VoidCallback onUpdate;
+  final bool autoExpandAiSummary;
 
-  const _RouteCard({required this.route, required this.onUpdate});
+  const _RouteCard({
+    super.key,
+    required this.route,
+    required this.onUpdate,
+    this.autoExpandAiSummary = false,
+  });
 
   @override
   State<_RouteCard> createState() => _RouteCardState();
@@ -133,7 +165,7 @@ class _RouteCard extends StatefulWidget {
 class _RouteCardState extends State<_RouteCard> {
   final WeatherService _weatherService = WeatherService();
   bool _isAuditing = false;
-  bool _showAiSummary = false;
+  late bool _showAiSummary;
 
   bool get _isActiveToday {
     final now = DateTime.now();
@@ -141,6 +173,12 @@ class _RouteCardState extends State<_RouteCard> {
     // Supabase: 0 (Mon) - 6 (Sun)
     final dayNum = now.weekday - 1; 
     return widget.route.drivingDays.contains(dayNum);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _showAiSummary = widget.autoExpandAiSummary;
   }
 
   Future<void> _toggleActive(bool value) async {
@@ -343,22 +381,7 @@ class _RouteCardState extends State<_RouteCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (_isActiveToday)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12.0),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppDesignSystem.primary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          'ACTIVE TODAY',
-                          style: AppDesignSystem.labelBold.copyWith(color: AppDesignSystem.primary, fontSize: 10),
-                        ),
-                      ),
-                    ),
-                  // Top Action/Status Row
+                   // Top Action/Status Row
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -440,20 +463,19 @@ class _RouteCardState extends State<_RouteCard> {
                   const SizedBox(height: 16),
                   const Divider(color: Color(0xFF333333)),
                   const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      const Icon(Icons.schedule, size: 16, color: AppDesignSystem.secondary),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          '$activeDaysStr • $timeStr',
-                          style: AppDesignSystem.bodyMedium.copyWith(fontWeight: FontWeight.bold),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const Icon(Icons.arrow_forward_ios, size: 14, color: AppDesignSystem.outline),
-                    ],
-                  ),
+                   Row(
+                     children: [
+                       const Icon(Icons.schedule, size: 16, color: AppDesignSystem.secondary),
+                       const SizedBox(width: 8),
+                       Expanded(
+                         child: Text(
+                           '$activeDaysStr • $timeStr',
+                           style: AppDesignSystem.bodyMedium.copyWith(fontWeight: FontWeight.bold),
+                           softWrap: true,
+                         ),
+                       ),
+                     ],
+                   ),
                 ],
               ),
             ),
@@ -475,22 +497,11 @@ class _RouteCardState extends State<_RouteCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Text('SAFETY BRIEFING', style: AppDesignSystem.labelBold.copyWith(color: AppDesignSystem.outline, fontSize: 10)),
-                      if (_isActiveToday) ...[
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppDesignSystem.primary,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text('PRIORITY', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold)),
-                        ),
-                      ],
-                    ],
-                  ),
+                   Row(
+                     children: [
+                       Text('SAFETY BRIEFING', style: AppDesignSystem.labelBold.copyWith(color: AppDesignSystem.outline, fontSize: 10)),
+                     ],
+                   ),
                   const SizedBox(height: 12),
                   if (_isAuditing)
                     const Center(
