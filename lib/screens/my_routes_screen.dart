@@ -63,6 +63,7 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
         ],
       ),
       body: SafeArea(
+        bottom: true,
         child: FutureBuilder<List<RouteModel>>(
         future: _routesFuture,
         builder: (context, snapshot) {

@@ -27,7 +27,7 @@ class _NavigationShellState extends State<NavigationShell> {
       bottomNavigationBar: SafeArea(
         bottom: true,
         child: Container(
-          height: 72,
+          height: 80,
           decoration: const BoxDecoration(
             border: Border(top: BorderSide(color: Color(0xFF333333), width: 2)),
           ),
@@ -71,7 +71,7 @@ class _NavigationShellState extends State<NavigationShell> {
     return BottomNavigationBarItem(
       icon: Container(
         width: double.infinity,
-        height: 72, // Match parent height
+        height: 80, // Match parent height
         color: isSelected ? AppDesignSystem.primary : Colors.transparent,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
