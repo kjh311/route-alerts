@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show Icons, Colors;
 import '../theme/design_system.dart';
 import '../services/auth_service.dart';
 
@@ -17,11 +18,20 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
     try {
       await AuthService().authenticate();
-      // Navigation is handled by AuthWrapper via onAuthStateChange
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}')),
+        showCupertinoDialog(
+          context: context,
+          builder: (context) => CupertinoAlertDialog(
+            title: const Text('ERROR'),
+            content: Text(e.toString()),
+            actions: [
+              CupertinoDialogAction(
+                child: const Text('OK'),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
         );
       }
     } finally {
@@ -31,96 +41,89 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: AppDesignSystem.marginEdge),
-                  decoration: const BoxDecoration(
-                    color: AppDesignSystem.background,
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Logo or App Name
-                      Center(
-                        child: Column(
-                          children: [
-                            const Icon(
-                              Icons.local_shipping,
-                              size: 80,
-                              color: AppDesignSystem.primary,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'HAUL ALERTS',
-                              style: AppDesignSystem.displayLarge.copyWith(
-                                color: AppDesignSystem.primary,
-                                letterSpacing: 4.0,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Precision Safety for Professionals',
-                              style: AppDesignSystem.bodyMedium.copyWith(
-                                color: AppDesignSystem.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
+    return CupertinoPageScaffold(
+      backgroundColor: const Color(0xFF000000),
+      child: SafeArea(
+        bottom: true,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 100),
+              Center(
+                child: Column(
+                  children: [
+                    const Icon(
+                      CupertinoIcons.bus,
+                      size: 100,
+                      color: Color(0xFFE67E22),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'HAUL ALERTS',
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFFE67E22),
+                        letterSpacing: 4.0,
                       ),
-                      const SizedBox(height: 64),
-
-                      // Login Button
-                      if (kIsWeb)
-                        AuthService().buildWebButton()
-                      else if (_isLoading)
-                        const Center(child: CircularProgressIndicator(color: AppDesignSystem.primary))
-                      else
-                        ElevatedButton(
-                          onPressed: _signInWithGoogle,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.black,
-                            minimumSize: const Size.fromHeight(AppDesignSystem.touchTargetMin),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.login, size: 24),
-                              const SizedBox(width: 12),
-                              Text(
-                                'SIGN IN WITH GOOGLE',
-                                style: AppDesignSystem.labelBold.copyWith(
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      const SizedBox(height: 24),
-
-                      Text(
-                        'By signing in, you agree to our Terms of Service and Privacy Policy.',
-                        textAlign: TextAlign.center,
-                        style: AppDesignSystem.labelBold.copyWith(
-                          color: AppDesignSystem.outline,
-                          fontWeight: FontWeight.w400,
-                          fontSize: 12,
-                        ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Precision Safety for Professionals',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: CupertinoColors.systemGrey,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-            );
-          },
+              const SizedBox(height: 80),
+
+              if (kIsWeb)
+                AuthService().buildWebButton()
+              else if (_isLoading)
+                const Center(child: CupertinoActivityIndicator(radius: 15))
+              else
+                SizedBox(
+                  width: double.infinity,
+                  child: CupertinoButton(
+                    color: CupertinoColors.white,
+                    onPressed: _signInWithGoogle,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(CupertinoIcons.lock_shield, color: CupertinoColors.black, size: 24),
+                        SizedBox(width: 12),
+                        Text(
+                          'SIGN IN WITH GOOGLE',
+                          style: TextStyle(
+                            color: CupertinoColors.black,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 24),
+
+              const Text(
+                'By signing in, you agree to our Terms of Service and Privacy Policy.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: CupertinoColors.systemGrey,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 48),
+            ],
+          ),
         ),
       ),
     );

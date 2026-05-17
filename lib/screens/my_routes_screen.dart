@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart' show Icons, Colors, Material, Tooltip, Curves, Scrollable, WidgetsBinding;
 import 'package:intl/intl.dart';
 import '../theme/design_system.dart';
 import '../models/route_model.dart';
@@ -51,99 +52,122 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('MY ROUTES'),
+    return CupertinoPageScaffold(
+      navigationBar: CupertinoNavigationBar(
+        leading: CupertinoButton(
+          padding: EdgeInsets.zero,
+          onPressed: () async {
+            await Navigator.push(
+              context,
+              CupertinoPageRoute(builder: (_) => const CreateRouteScreen()),
+            );
+            _reloadRoutes();
+          },
+          child: const Icon(CupertinoIcons.add, color: Color(0xFFE67E22)),
+        ),
+        middle: const Text(
+          'MY ROUTES',
+          style: TextStyle(color: CupertinoColors.white, letterSpacing: 1.2, fontWeight: FontWeight.bold),
+        ),
+        trailing: CupertinoButton(
+          padding: EdgeInsets.zero,
+          onPressed: _reloadRoutes,
+          child: const Icon(CupertinoIcons.refresh, color: Color(0xFFE67E22)),
+        ),
+        backgroundColor: const Color(0xFF1A1A1A),
         automaticallyImplyLeading: false,
-        actions: [
-          IconButton(
-            onPressed: _reloadRoutes,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
       ),
-      body: SafeArea(
+      child: SafeArea(
         bottom: true,
         child: FutureBuilder<List<RouteModel>>(
-        future: _routesFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: AppDesignSystem.primary));
-          }
+          future: _routesFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CupertinoActivityIndicator(radius: 12));
+            }
 
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
-                    const SizedBox(height: 16),
-                    Text('Failed to load routes', style: AppDesignSystem.headlineMedium),
-                    const SizedBox(height: 8),
-                    Text(snapshot.error.toString(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
-                  ],
-                ),
-              ),
-            );
-          }
-
-          final routes = snapshot.data ?? [];
-
-          if (routes.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.local_shipping_outlined, size: 64, color: AppDesignSystem.outline.withOpacity(0.3)),
-                  const SizedBox(height: 16),
-                  Text('No routes saved yet', style: AppDesignSystem.headlineMedium.copyWith(color: AppDesignSystem.outline)),
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const CreateRouteScreen()),
-                      );
-                      _reloadRoutes();
-                    },
-                    icon: const Icon(Icons.add),
-                    label: const Text('CREATE FIRST ROUTE'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppDesignSystem.primary,
-                      foregroundColor: AppDesignSystem.onPrimary,
-                    ),
+            if (snapshot.hasError) {
+              return SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 64),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(CupertinoIcons.exclamationmark_triangle, size: 48, color: CupertinoColors.systemRed),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Failed to load routes',
+                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: CupertinoColors.white),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        snapshot.error.toString(),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: CupertinoColors.systemGrey),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            );
-          }
-
-          // Auto focus on notification tap
-          if (widget.focusRouteId != null) {
-            _scrollToRoute(widget.focusRouteId!);
-          }
-
-          return ListView.separated(
-            controller: _scrollController,
-            padding: const EdgeInsets.all(AppDesignSystem.marginEdge),
-            itemCount: routes.length,
-            separatorBuilder: (context, index) => const SizedBox(height: 16),
-            itemBuilder: (context, index) {
-              final route = routes[index];
-              _cardKeys[route.id] = GlobalKey();
-              return _RouteCard(
-                key: _cardKeys[route.id],
-                route: route,
-                onUpdate: _reloadRoutes,
-                autoExpandAiSummary: widget.focusRouteId == route.id,
+                ),
               );
-            },
-          );
-        },
+            }
+
+            final routes = snapshot.data ?? [];
+
+            if (routes.isEmpty) {
+              return SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 100),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(CupertinoIcons.bus, size: 80, color: Color(0x33FFFFFF)),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'No routes saved yet',
+                        style: TextStyle(fontSize: 20, color: CupertinoColors.systemGrey, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 32),
+                      CupertinoButton.filled(
+                        onPressed: () async {
+                          await Navigator.push(
+                            context,
+                            CupertinoPageRoute(builder: (_) => const CreateRouteScreen()),
+                          );
+                          _reloadRoutes();
+                        },
+                        child: const Text('CREATE FIRST ROUTE', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            // Auto focus on notification tap
+            if (widget.focusRouteId != null) {
+              _scrollToRoute(widget.focusRouteId!);
+            }
+
+            return ListView.separated(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(16),
+              itemCount: routes.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 16),
+              itemBuilder: (context, index) {
+                final route = routes[index];
+                _cardKeys[route.id] = GlobalKey();
+                return _RouteCard(
+                  key: _cardKeys[route.id],
+                  route: route,
+                  onUpdate: _reloadRoutes,
+                  autoExpandAiSummary: widget.focusRouteId == route.id,
+                );
+              },
+            );
+          },
+        ),
       ),
-    ));
+    );
   }
 }
 
@@ -189,34 +213,43 @@ class _RouteCardState extends State<_RouteCard> {
           .update({'is_active': value})
           .eq('id', widget.route.id!);
       
-      // Force refresh of all background alarms
       await NotificationService().refreshScheduledNotifications();
-      
       widget.onUpdate();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update status: $e')),
+        showCupertinoDialog(
+          context: context,
+          builder: (context) => CupertinoAlertDialog(
+            title: const Text('ERROR'),
+            content: Text('Failed to update status: $e'),
+            actions: [
+              CupertinoDialogAction(
+                child: const Text('OK'),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
         );
       }
     }
   }
 
   Future<void> _deleteRoute() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showCupertinoDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppDesignSystem.surfaceContainer,
-        title: Text('DELETE ROUTE?', style: AppDesignSystem.headlineMedium),
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('DELETE ROUTE?'),
         content: const Text('Are you sure you want to delete this route? This will also cancel all scheduled alerts.'),
         actions: [
-          TextButton(
+          CupertinoDialogAction(
+            isDefaultAction: true,
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('CANCEL', style: TextStyle(color: AppDesignSystem.outline)),
+            child: const Text('CANCEL'),
           ),
-          TextButton(
+          CupertinoDialogAction(
+            isDestructiveAction: true,
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('DELETE', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+            child: const Text('DELETE'),
           ),
         ],
       ),
@@ -229,14 +262,22 @@ class _RouteCardState extends State<_RouteCard> {
             .delete()
             .eq('id', widget.route.id!);
         
-        // Refresh notifications to remove deleted route alarms
         await NotificationService().refreshScheduledNotifications();
-        
         widget.onUpdate();
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to delete route: $e')),
+          showCupertinoDialog(
+            context: context,
+            builder: (context) => CupertinoAlertDialog(
+              title: const Text('ERROR'),
+              content: Text('Failed to delete route: $e'),
+              actions: [
+                CupertinoDialogAction(
+                  child: const Text('OK'),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
           );
         }
       }
@@ -263,44 +304,43 @@ class _RouteCardState extends State<_RouteCard> {
         totalDistanceMiles: widget.route.waypoints.last['distance_from_origin_miles'] ?? 0,
       );
 
-      // Generate AI Summary
       try {
         final aiBriefing = await AIService().generateWeatherBriefing(audit);
         audit['ai_briefing'] = aiBriefing;
 
-        // NEW: Trigger Immediate Notification
-        final String title = 'Weather Briefing: ${widget.route.originName} to ${widget.route.destinationName}';
-        
-        // Ensure permissions
         final hasPermission = await NotificationService().requestNotificationPermission();
         if (hasPermission) {
           await NotificationService().sendImmediateSummaryNotification(
-            title: title,
+            title: 'Weather Briefing: ${widget.route.originName}',
             body: aiBriefing,
           );
-        } else {
-          // Fallback UI if permission denied
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Notifications are disabled. Weather briefing saved to route detail.')),
-            );
-          }
         }
-      } catch (aiError) {
-        debugPrint('DEBUG: AI Briefing generation failed: $aiError');
+      } catch (e) {
+        debugPrint('AI Briefing failed: $e');
       }
 
-      // Update Supabase
       await Supabase.instance.client
           .from('routes')
           .update({'weather_condition': audit})
           .eq('id', widget.route.id!);
 
-      widget.onUpdate(); // Refresh the list to show new data
+      widget.onUpdate();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Weather Audit Failed: $e')),
-      );
+      if (mounted) {
+        showCupertinoDialog(
+          context: context,
+          builder: (context) => CupertinoAlertDialog(
+            title: const Text('AUDIT FAILED'),
+            content: Text(e.toString()),
+            actions: [
+              CupertinoDialogAction(
+                child: const Text('OK'),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _isAuditing = false);
@@ -311,34 +351,8 @@ class _RouteCardState extends State<_RouteCard> {
   String? _parseBriefingSummary() {
     final audit = widget.route.weatherCondition;
     if (audit == null) return null;
-
-    // Use AI briefing if available
-    if (audit['ai_briefing'] != null) {
-      return audit['ai_briefing'] as String;
-    }
-
-    final alerts = audit['alerts'] as List<dynamic>?;
-    if (alerts == null || alerts.isEmpty) return null;
-
-    // Find the max peak wind across all alerts
-    Map<String, dynamic>? peak;
-    for (var a in alerts) {
-      if (peak == null || (a['peak_wind'] ?? 0) > (peak['peak_wind'] ?? 0)) {
-        peak = a;
-      }
-    }
-
-    if (peak == null) return 'Audit complete. No significant hazards found.';
-
-    final peakWind = (peak['peak_wind'] as num?)?.toDouble() ?? 0.0;
-    final city = peak['city'] ?? 'Unknown City';
-    final severity = audit['status'] ?? 'Unknown Status';
-    final peakTime = peak['peak_time'] != null 
-        ? DateFormat('h:mm a').format(DateTime.parse(peak['peak_time']))
-        : 'Unknown Time';
-    final date = DateFormat('MMM d').format(DateTime.now());
-
-    return 'Weather Audit for $date: Peak wind of ${peakWind.round()} mph in $city at $peakTime. Status: $severity.';
+    if (audit['ai_briefing'] != null) return audit['ai_briefing'] as String;
+    return null;
   }
 
   @override
@@ -347,7 +361,6 @@ class _RouteCardState extends State<_RouteCard> {
     final dummyDate = DateTime(2000, 1, 1, int.parse(parts[0]), int.parse(parts[1]));
     final timeStr = DateFormat('hh:mm a').format(dummyDate).toUpperCase();
     
-    // Format driving days nicely
     final dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     final activeDaysStr = widget.route.drivingDays.map((d) => dayNames[d - 1]).join(', ');
     
@@ -355,199 +368,175 @@ class _RouteCardState extends State<_RouteCard> {
 
     return Container(
       decoration: BoxDecoration(
-        color: AppDesignSystem.surfaceContainer,
-        borderRadius: BorderRadius.circular(AppDesignSystem.radiusDefault),
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: _isActiveToday ? AppDesignSystem.primary.withOpacity(0.5) : AppDesignSystem.outline.withOpacity(0.2),
+          color: _isActiveToday ? const Color(0xFFE67E22).withOpacity(0.5) : const Color(0xFF333333),
           width: _isActiveToday ? 2 : 1,
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Navigable Area
-          InkWell(
+          GestureDetector(
             onTap: () async {
               await Navigator.push(
                 context,
-                MaterialPageRoute(
+                CupertinoPageRoute(
                   builder: (_) => CreateRouteScreen(initialRoute: widget.route),
                 ),
               );
               widget.onUpdate();
             },
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(AppDesignSystem.radiusDefault)),
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                   // Top Action/Status Row
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Row(
                         children: [
-                          Checkbox(
+                          CupertinoSwitch(
                             value: widget.route.isActive,
-                            onChanged: (val) => _toggleActive(val ?? false),
-                            activeColor: AppDesignSystem.primary,
-                            visualDensity: VisualDensity.compact,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                            onChanged: (val) => _toggleActive(val),
+                            activeColor: const Color(0xFFE67E22),
                           ),
+                          const SizedBox(width: 8),
                           Text(
                             widget.route.isActive ? 'ACTIVE' : 'INACTIVE',
-                            style: AppDesignSystem.labelBold.copyWith(
-                              color: widget.route.isActive ? AppDesignSystem.primary : AppDesignSystem.outline,
-                              fontSize: 10,
+                            style: TextStyle(
+                              color: widget.route.isActive ? const Color(0xFFE67E22) : CupertinoColors.systemGrey,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ],
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppDesignSystem.surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(AppDesignSystem.radiusDefault),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined, size: 16, color: AppDesignSystem.secondary),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                              onPressed: () async {
-                                await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => CreateRouteScreen(initialRoute: widget.route),
-                                  ),
-                                );
-                                widget.onUpdate();
-                              },
-                            ),
-                            const SizedBox(width: 12),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                              onPressed: _deleteRoute,
-                            ),
-                          ],
-                        ),
+                      Row(
+                        children: [
+                          CupertinoButton(
+                            padding: EdgeInsets.zero,
+                            onPressed: () async {
+                              await Navigator.push(
+                                context,
+                                CupertinoPageRoute(
+                                  builder: (_) => CreateRouteScreen(initialRoute: widget.route),
+                                ),
+                              );
+                              widget.onUpdate();
+                            },
+                            child: const Icon(CupertinoIcons.pencil, size: 20, color: CupertinoColors.systemGrey),
+                          ),
+                          CupertinoButton(
+                            padding: EdgeInsets.zero,
+                            onPressed: _deleteRoute,
+                            child: const Icon(CupertinoIcons.trash, size: 20, color: CupertinoColors.systemRed),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  // Trip Names Row
+                  const SizedBox(height: 16),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         '${widget.route.originName} →',
-                        style: AppDesignSystem.headlineMedium.copyWith(
-                          color: widget.route.isActive ? AppDesignSystem.onSurfaceVariant : AppDesignSystem.onSurfaceVariant.withOpacity(0.5),
+                        style: const TextStyle(
+                          color: CupertinoColors.systemGrey,
+                          fontSize: 18,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       Text(
                         widget.route.destinationName,
-                        style: AppDesignSystem.headlineLarge.copyWith(
-                          color: widget.route.isActive ? AppDesignSystem.primary : AppDesignSystem.primary.withOpacity(0.3),
-                          decoration: widget.route.isActive ? null : TextDecoration.lineThrough,
+                        style: TextStyle(
+                          color: widget.route.isActive ? const Color(0xFFE67E22) : const Color(0x33E67E22),
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
                           height: 1.1,
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  const Divider(color: Color(0xFF333333)),
+                  Container(height: 1, color: const Color(0xFF333333)),
                   const SizedBox(height: 16),
-                   Row(
-                     children: [
-                       const Icon(Icons.schedule, size: 16, color: AppDesignSystem.secondary),
-                       const SizedBox(width: 8),
-                       Expanded(
-                         child: Text(
-                           '$activeDaysStr • $timeStr',
-                           style: AppDesignSystem.bodyMedium.copyWith(fontWeight: FontWeight.bold),
-                           softWrap: true,
-                         ),
-                       ),
-                     ],
-                   ),
+                  Row(
+                    children: [
+                      const Icon(CupertinoIcons.time, size: 16, color: CupertinoColors.systemGrey2),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '$activeDaysStr • $timeStr',
+                          style: const TextStyle(color: CupertinoColors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
           ),
           
-          // Safety Briefing Area (Available for all routes, highlighted for active)
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _isActiveToday ? AppDesignSystem.primary.withOpacity(0.05) : AppDesignSystem.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(AppDesignSystem.radiusDefault),
-                border: Border.all(
-                  color: _isActiveToday ? AppDesignSystem.primary.withOpacity(0.2) : AppDesignSystem.outline.withOpacity(0.1)
-                ),
+                color: const Color(0xFF000000),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF333333)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                   Row(
-                     children: [
-                       Text('SAFETY BRIEFING', style: AppDesignSystem.labelBold.copyWith(color: AppDesignSystem.outline, fontSize: 10)),
-                     ],
-                   ),
+                  const Text(
+                    'SAFETY BRIEFING',
+                    style: TextStyle(color: CupertinoColors.systemGrey, fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 12),
                   if (_isAuditing)
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: CircularProgressIndicator(strokeWidth: 2, color: AppDesignSystem.primary),
+                    const Center(child: CupertinoActivityIndicator())
+                  else if (summary != null)
+                    GestureDetector(
+                      onTap: () => setState(() => _showAiSummary = !_showAiSummary),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                _showAiSummary ? CupertinoIcons.chevron_up : CupertinoIcons.chevron_down,
+                                color: const Color(0xFFE67E22),
+                                size: 16,
+                              ),
+                              const SizedBox(width: 4),
+                              const Text(
+                                'AI SUMMARY',
+                                style: TextStyle(color: Color(0xFFE67E22), fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                          if (_showAiSummary)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8.0),
+                              child: Text(
+                                summary,
+                                style: const TextStyle(color: CupertinoColors.white, fontSize: 14, height: 1.4),
+                              ),
+                            ),
+                        ],
                       ),
                     )
-                   else if (summary != null)
-                     InkWell(
-                       onTap: () => setState(() => _showAiSummary = !_showAiSummary),
-                       child: Column(
-                         crossAxisAlignment: CrossAxisAlignment.start,
-                         children: [
-                           Row(
-                             children: [
-                               Icon(_showAiSummary ? Icons.expand_less : Icons.expand_more, color: AppDesignSystem.primary, size: 20),
-                               const SizedBox(width: 4),
-                               Text(
-                                 'AI SUMMARY',
-                                 style: AppDesignSystem.labelBold.copyWith(color: AppDesignSystem.primary, fontSize: 12),
-                               ),
-                             ],
-                           ),
-                           if (_showAiSummary)
-                             Padding(
-                               padding: const EdgeInsets.only(top: 8.0),
-                               child: Text(
-                                 (widget.route.weatherCondition?['ai_briefing'] as String?) ?? 'AI summary not available.',
-                                 style: AppDesignSystem.bodyMedium.copyWith(color: AppDesignSystem.onSurfaceVariant),
-                               ),
-                             ),
-                         ],
-                       ),
-                     )
-                   else
-                    ElevatedButton(
+                  else
+                    CupertinoButton.filled(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
                       onPressed: _getRouteWeather,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppDesignSystem.primary,
-                        foregroundColor: AppDesignSystem.onPrimary,
-                        minimumSize: const Size(double.infinity, 44),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      child: const Text('GET ROUTE WEATHER'),
+                      child: const Text('GET WEATHER AUDIT', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                     ),
                 ],
               ),

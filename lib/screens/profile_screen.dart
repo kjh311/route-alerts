@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart' show Colors, Icons, Material, MaterialPageRoute;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/design_system.dart';
 import 'login_screen.dart';
@@ -25,22 +26,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _deleteAccount() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showCupertinoDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppDesignSystem.surfaceContainer,
-        title: const Text('DELETE ACCOUNT?', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('DELETE ACCOUNT?'),
         content: const Text(
           'Are you sure you want to permanently delete your account? This will delete all your routes and data. This action cannot be undone.',
         ),
         actions: [
-          TextButton(
+          CupertinoDialogAction(
+            isDefaultAction: true,
             onPressed: () => Navigator.pop(context, false),
             child: const Text('CANCEL'),
           ),
-          TextButton(
+          CupertinoDialogAction(
+            isDestructiveAction: true,
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('DELETE', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+            child: const Text('DELETE'),
           ),
         ],
       ),
@@ -61,14 +63,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const LoginScreen()),
+            CupertinoPageRoute(builder: (_) => const LoginScreen()),
             (route) => false,
           );
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to delete account: $e')),
+          showCupertinoDialog(
+            context: context,
+            builder: (context) => CupertinoAlertDialog(
+              title: const Text('ERROR'),
+              content: Text('Failed to delete account: $e'),
+              actions: [
+                CupertinoDialogAction(
+                  child: const Text('OK'),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
           );
         }
       }
@@ -77,31 +89,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('PROFILE'),
+    return CupertinoPageScaffold(
+      navigationBar: const CupertinoNavigationBar(
+        middle: Text('PROFILE', style: TextStyle(color: CupertinoColors.white, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+        backgroundColor: Color(0xFF1A1A1A),
+        automaticallyImplyLeading: false,
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(AppDesignSystem.marginEdge),
+      child: SafeArea(
+        bottom: true,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 24),
-              Text(
+              const Text(
                 'Account',
-                style: AppDesignSystem.headlineMedium,
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: CupertinoColors.white),
               ),
               const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: AppDesignSystem.surfaceContainer,
-                  borderRadius: BorderRadius.circular(AppDesignSystem.radiusDefault),
+                  color: const Color(0xFF1A1A1A),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF333333)),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.person, color: AppDesignSystem.primary, size: 32),
+                    const Icon(CupertinoIcons.person_crop_circle, color: Color(0xFFE67E22), size: 40),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(
@@ -109,12 +125,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         children: [
                           Text(
                             _userEmail ?? 'No email',
-                            style: AppDesignSystem.bodyLarge,
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: CupertinoColors.white),
                           ),
                           const SizedBox(height: 4),
-                          Text(
+                          const Text(
                             'Signed in with Google',
-                            style: AppDesignSystem.bodyMedium.copyWith(color: AppDesignSystem.outline),
+                            style: TextStyle(fontSize: 14, color: CupertinoColors.systemGrey),
                           ),
                         ],
                       ),
@@ -122,41 +138,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 32),
-              Text(
+              const SizedBox(height: 40),
+              const Text(
                 'Actions',
-                style: AppDesignSystem.headlineMedium,
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: CupertinoColors.white),
               ),
               const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: _signOut,
-                icon: const Icon(Icons.logout),
-                label: const Text('SIGN OUT'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppDesignSystem.surfaceContainer,
-                  foregroundColor: AppDesignSystem.onSurface,
-                  minimumSize: const Size(double.infinity, 56),
+              SizedBox(
+                width: double.infinity,
+                child: CupertinoButton(
+                  color: const Color(0xFF1A1A1A),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  onPressed: _signOut,
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(CupertinoIcons.square_arrow_left, size: 20),
+                      const SizedBox(width: 12),
+                      Text('SIGN OUT', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
-              ElevatedButton.icon(
-                onPressed: _deleteAccount,
-                icon: const Icon(Icons.delete_forever),
-                label: const Text('DELETE ACCOUNT'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.redAccent.withOpacity(0.1),
-                  foregroundColor: Colors.redAccent,
-                  minimumSize: const Size(double.infinity, 56),
+              SizedBox(
+                width: double.infinity,
+                child: CupertinoButton(
+                  color: const Color(0x11FF3B30),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  onPressed: _deleteAccount,
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(CupertinoIcons.delete, color: CupertinoColors.systemRed, size: 20),
+                      const SizedBox(width: 12),
+                      Text('DELETE ACCOUNT', style: TextStyle(color: CupertinoColors.systemRed, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(height: 100),
               const Center(
                 child: Text(
                   'Haul Alerts v1.0',
-                  style: TextStyle(color: AppDesignSystem.outline, fontSize: 12),
+                  style: TextStyle(color: CupertinoColors.systemGrey, fontSize: 12),
                 ),
               ),
-              const SizedBox(height: 16),
             ],
           ),
         ),

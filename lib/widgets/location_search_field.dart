@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -9,8 +9,6 @@ import '../theme/design_system.dart';
 import '../core/constants.dart';
 import '../services/google_maps_loader.dart';
 
-/// A custom Location Search field that handles Web CORS by using the Native 
-/// Google Maps JS SDK and Mobile by making direct API calls.
 class LocationSearchField extends StatefulWidget {
   final TextEditingController controller;
   final String label;
@@ -64,10 +62,9 @@ class _LocationSearchFieldState extends State<LocationSearchField> {
     
     try {
       if (kIsWeb) {
-        await _ensureMapsLoaded();
+        await GoogleMapsLoader.ensureLoaded();
         await _searchWeb(query);
       } else {
-        // Native Dart implementation for mobile
         await _getSuggestions(query);
       }
     } catch (e) {
@@ -77,15 +74,8 @@ class _LocationSearchFieldState extends State<LocationSearchField> {
     }
   }
 
-  Future<void> _ensureMapsLoaded() async {
-    await GoogleMapsLoader.ensureLoaded();
-  }
-
-  /// Web Search using Native Google Maps JS SDK (Bypasses CORS entirely)
   Future<void> _searchWeb(String query) async {
     final completer = Completer<void>();
-    
-    // Call the JS Autocomplete Service
     try {
        js.context.callMethod('eval', ["""
         (function(query) {
@@ -113,11 +103,9 @@ class _LocationSearchFieldState extends State<LocationSearchField> {
     } catch (e) {
       completer.completeError(e);
     }
-    
     return completer.future;
   }
 
-  /// Native Dart implementation for Mobile (Google Places Autocomplete API)
   Future<void> _getSuggestions(String query) async {
     try {
       final String apiKey = dotenv.env['ANDROID_MAPS_KEY'] ?? AppConstants.googleMapsApiKey;
@@ -136,23 +124,16 @@ class _LocationSearchFieldState extends State<LocationSearchField> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        debugPrint('DEBUG: API Predictions Found: ${data['predictions']?.length ?? 0}');
-        
         if (data['status'] == 'OK') {
           setState(() {
             _predictions.clear();
             _predictions.addAll(data['predictions']);
           });
           _showOverlay();
-        } else {
-          debugPrint('DEBUG: API Error Status: ${data['status']}');
-          print('DEBUG: Raw Response Body: ${response.body}');
         }
-      } else {
-        print('DEBUG: HTTP Error Body: ${response.body}');
       }
     } catch (e) {
-      debugPrint('DEBUG: Mobile Search API Error: $e');
+      debugPrint('Mobile Search API Error: $e');
     }
   }
 
@@ -163,7 +144,6 @@ class _LocationSearchFieldState extends State<LocationSearchField> {
     widget.controller.text = description;
     _removeOverlay();
 
-    // Fetch Details for Lat/Lng
     try {
       double? lat;
       double? lng;
@@ -188,7 +168,6 @@ class _LocationSearchFieldState extends State<LocationSearchField> {
         });
         await completer.future;
       } else {
-        // Native Dart implementation for Mobile (Google Places Details API)
         final String apiKey = dotenv.env['ANDROID_MAPS_KEY'] ?? AppConstants.googleMapsApiKey;
         final String url = 'https://maps.googleapis.com/maps/api/place/details/json'
             '?place_id=$placeId'
@@ -204,20 +183,17 @@ class _LocationSearchFieldState extends State<LocationSearchField> {
         );
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
-          print('DEBUG: Details Data being parsed: $data');
           if (data['status'] == 'OK' && data['result'] != null && data['result']['geometry'] != null) {
             final loc = data['result']['geometry']['location'];
             lat = (loc['lat'] as num?)?.toDouble() ?? 0.0;
             lng = (loc['lng'] as num?)?.toDouble() ?? 0.0;
           }
-        } else {
-          print('DEBUG: Details HTTP Error Body: ${response.body}');
         }
       }
 
       widget.onSelected(description, lat, lng);
     } catch (e) {
-      debugPrint('DEBUG: Details Error: $e');
+      debugPrint('Details Error: $e');
       widget.onSelected(description, null, null);
     }
   }
@@ -236,10 +212,15 @@ class _LocationSearchFieldState extends State<LocationSearchField> {
           link: _layerLink,
           showWhenUnlinked: false,
           offset: Offset(0, size.height + 4),
-          child: Material(
-            elevation: 8,
-            color: AppDesignSystem.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(AppDesignSystem.radiusDefault),
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A1A1A),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF333333)),
+              boxShadow: [
+                BoxShadow(color: CupertinoColors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 4)),
+              ],
+            ),
             child: ConstrainedBox(
               constraints: BoxConstraints(
                 maxHeight: MediaQuery.of(context).size.height * 0.4,
@@ -248,14 +229,15 @@ class _LocationSearchFieldState extends State<LocationSearchField> {
                 padding: EdgeInsets.zero,
                 shrinkWrap: true,
                 itemCount: _predictions.length,
-                separatorBuilder: (_, __) => Divider(color: AppDesignSystem.outline.withOpacity(0.1), height: 1),
+                separatorBuilder: (_, __) => Container(height: 1, color: const Color(0xFF333333)),
                 itemBuilder: (context, index) {
                   final p = _predictions[index];
-                  return ListTile(
-                    leading: const Icon(Icons.location_on, color: AppDesignSystem.outline, size: 20),
+                  return CupertinoListTile(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    leading: const Icon(CupertinoIcons.location, color: CupertinoColors.systemGrey, size: 20),
                     title: Text(
                       p['description'],
-                      style: AppDesignSystem.bodyMedium.copyWith(color: AppDesignSystem.onSurface),
+                      style: const TextStyle(color: CupertinoColors.white, fontSize: 14),
                     ),
                     onTap: () => _handlePredictionClick(p),
                   );
@@ -282,17 +264,28 @@ class _LocationSearchFieldState extends State<LocationSearchField> {
       children: [
         CompositedTransformTarget(
           link: _layerLink,
-          child: TextFormField(
+          child: CupertinoTextField(
             controller: widget.controller,
             onChanged: _onChanged,
-            style: AppDesignSystem.bodyLarge,
-            decoration: InputDecoration(
-              hintText: widget.hintText,
-              prefixIcon: Icon(widget.icon, color: widget.iconColor),
-              suffixIcon: _isSearching 
-                ? const SizedBox(width: 20, height: 20, child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator(strokeWidth: 2)))
-                : null,
+            placeholder: widget.hintText,
+            placeholderStyle: const TextStyle(color: CupertinoColors.systemGrey),
+            style: const TextStyle(color: CupertinoColors.white),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF000000),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF333333)),
             ),
+            prefix: Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Icon(widget.icon, color: widget.iconColor, size: 20),
+            ),
+            suffix: _isSearching 
+              ? const Padding(
+                  padding: EdgeInsets.only(right: 12),
+                  child: CupertinoActivityIndicator(radius: 8),
+                )
+              : null,
           ),
         ),
       ],
