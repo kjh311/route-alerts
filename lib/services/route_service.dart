@@ -18,6 +18,19 @@ class RouteService {
         .toList();
   }
 
+  /// Listen to real-time updates for current user's routes
+  Stream<List<RouteModel>> get routesStream {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return Stream.value([]);
+    
+    return _supabase
+        .from('routes')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', userId)
+        .order('created_at', ascending: false)
+        .map((data) => data.map((json) => RouteModel.fromJson(json)).toList());
+  }
+
   /// Save a new route with user inputs and Google Directions API results
   Future<void> saveRoute({
     required String originName,

@@ -176,8 +176,7 @@ class NotificationService {
     final Map<String, dynamic>? audit = route.weatherCondition;
     final String? cachedBriefing = audit?['ai_briefing']?.toString();
     
-    final String aiBriefing = cachedBriefing ?? 
-        'Safety Audit Pending: Tap to generate today\'s AI weather summary for this route.';
+    final String aiBriefing = 'Haul Alert: Departure scheduled. Tap for route overview.';
         
     final String displayTitle = 'HAUL BRIEFING: ${route.originName}';
     for (int i = 1; i <= 7; i++) {
@@ -278,51 +277,6 @@ class NotificationService {
         if (route.isActive) {
           debugPrint('DEBUG: Processing active route: ${route.originName}');
           
-          // CHECK FOR STALE DATA: If checked yesterday or older, re-audit now
-          bool isStale = true;
-          final lastCheckedStr = route.weatherCondition?['last_checked'];
-          if (lastCheckedStr != null) {
-            final lastChecked = DateTime.parse(lastCheckedStr);
-            if (lastChecked.year == now.year && 
-                lastChecked.month == now.month && 
-                lastChecked.day == now.day) {
-              isStale = false;
-            }
-          }
-
-          if (isStale) {
-            debugPrint('DEBUG: [STALE DATA] Auditing route ${route.originName} automatically...');
-            try {
-              final timeParts = route.departureTime.split(':');
-              final departureDateTime = DateTime(now.year, now.month, now.day, 
-                  int.parse(timeParts[0]), int.parse(timeParts[1]));
-
-              // 1. Fetch fresh weather
-              final audit = await weatherService.auditRouteWeather(
-                departureTime: departureDateTime,
-                waypoints: List<Map<String, dynamic>>.from(route.waypoints),
-                shiftDurationHours: route.shiftDuration,
-                totalDistanceMiles: route.waypoints.last['distance_from_origin_miles'] ?? 0,
-              );
-
-              // 2. Generate new AI briefing
-              final aiBriefing = await aiService.generateWeatherBriefing(audit);
-              audit['ai_briefing'] = aiBriefing;
-
-              // 3. Update Supabase (Overwrite)
-              await Supabase.instance.client
-                  .from('routes')
-                  .update({'weather_condition': audit})
-                  .eq('id', route.id!);
-              
-              // 4. Update the local route object for scheduling below
-              route.weatherCondition = audit;
-              debugPrint('DEBUG: [AUTO-AUDIT COMPLETED] for ${route.originName}');
-            } catch (auditError) {
-              debugPrint('WARNING: Auto-audit failed for ${route.id}: $auditError');
-            }
-          }
-
           debugPrint('DEBUG: Scheduling alert for route: ${route.originName}');
           try {
             await scheduleRouteAlert(route);

@@ -12,7 +12,6 @@ import '../core/constants.dart';
 import '../widgets/location_search_field.dart';
 import '../services/maps_service.dart';
 import '../services/google_maps_loader.dart';
-import '../services/weather_service.dart';
 import '../services/notification_service.dart';
 
 class CreateRouteScreen extends StatefulWidget {
@@ -27,7 +26,6 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
   final TextEditingController _startController = TextEditingController();
   final TextEditingController _endController = TextEditingController();
   final MapsService _mapsService = MapsService();
-  final WeatherService _weatherService = WeatherService();
   
   Map<String, dynamic>? _startData;
   Map<String, dynamic>? _endData;

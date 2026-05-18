@@ -27,13 +27,6 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
   @override
   void initState() {
     super.initState();
-    _routesFuture = _routeService.fetchRoutes();
-  }
-
-  void _reloadRoutes() async {
-    setState(() {
-      _routesFuture = _routeService.fetchRoutes();
-    });
   }
 
   void _scrollToRoute(String routeId) {
@@ -61,7 +54,6 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
               context,
               CupertinoPageRoute(builder: (_) => const CreateRouteScreen()),
             );
-            _reloadRoutes();
           },
           child: const Icon(CupertinoIcons.add, color: Color(0xFFE67E22), size: 28),
         ),
@@ -69,18 +61,14 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
           'MY ROUTES',
           style: TextStyle(color: CupertinoColors.white, letterSpacing: 1.2, fontWeight: FontWeight.bold),
         ),
-        trailing: CupertinoButton(
-          padding: EdgeInsets.zero,
-          onPressed: _reloadRoutes,
-          child: const Icon(CupertinoIcons.refresh, color: Color(0xFFE67E22)),
-        ),
+        trailing: const SizedBox.shrink(),
         backgroundColor: const Color(0xFF1A1A1A),
         automaticallyImplyLeading: false,
       ),
       child: SafeArea(
         bottom: true,
-        child: FutureBuilder<List<RouteModel>>(
-          future: _routesFuture,
+        child: StreamBuilder<List<RouteModel>>(
+          stream: _routeService.routesStream,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CupertinoActivityIndicator(radius: 12));
@@ -133,7 +121,6 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
                             context,
                             CupertinoPageRoute(builder: (_) => const CreateRouteScreen()),
                           );
-                          _reloadRoutes();
                         },
                         child: const Text('CREATE FIRST ROUTE', style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
@@ -159,7 +146,6 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
                 return _RouteCard(
                   key: _cardKeys[route.id],
                   route: route,
-                  onUpdate: _reloadRoutes,
                   autoExpandAiSummary: widget.focusRouteId == route.id,
                 );
               },
@@ -173,13 +159,11 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
 
 class _RouteCard extends StatefulWidget {
   final RouteModel route;
-  final VoidCallback onUpdate;
   final bool autoExpandAiSummary;
 
   const _RouteCard({
     super.key,
     required this.route,
-    required this.onUpdate,
     this.autoExpandAiSummary = false,
   });
 
@@ -214,7 +198,6 @@ class _RouteCardState extends State<_RouteCard> {
           .eq('id', widget.route.id!);
       
       await NotificationService().refreshScheduledNotifications();
-      widget.onUpdate();
     } catch (e) {
       if (mounted) {
         showCupertinoDialog(
@@ -263,7 +246,6 @@ class _RouteCardState extends State<_RouteCard> {
             .eq('id', widget.route.id!);
         
         await NotificationService().refreshScheduledNotifications();
-        widget.onUpdate();
       } catch (e) {
         if (mounted) {
           showCupertinoDialog(
@@ -323,8 +305,6 @@ class _RouteCardState extends State<_RouteCard> {
           .from('routes')
           .update({'weather_condition': audit})
           .eq('id', widget.route.id!);
-
-      widget.onUpdate();
     } catch (e) {
       if (mounted) {
         showCupertinoDialog(
@@ -386,7 +366,6 @@ class _RouteCardState extends State<_RouteCard> {
                   builder: (_) => CreateRouteScreen(initialRoute: widget.route),
                 ),
               );
-              widget.onUpdate();
             },
             child: Padding(
               padding: const EdgeInsets.all(20),
@@ -425,7 +404,6 @@ class _RouteCardState extends State<_RouteCard> {
                                   builder: (_) => CreateRouteScreen(initialRoute: widget.route),
                                 ),
                               );
-                              widget.onUpdate();
                             },
                             child: const Icon(CupertinoIcons.pencil, size: 20, color: CupertinoColors.systemGrey),
                           ),
@@ -533,11 +511,7 @@ class _RouteCardState extends State<_RouteCard> {
                         ],
                       )
                     else
-                      CupertinoButton.filled(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        onPressed: _getRouteWeather,
-                        child: const Text('GET WEATHER AUDIT', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                      ),
+                      const SizedBox.shrink(),
                   ],
                 ),
               ),
