@@ -78,7 +78,7 @@ flutter_native_splash:
   fullscreen: true
   android_12:
     color: "#012E56"
-    image: "assets/images/logo.png"
+    image: "assets/images/loading_splash.png"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
