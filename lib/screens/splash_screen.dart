@@ -86,48 +86,30 @@ class _SplashScreenState extends State<SplashScreen> {
     const Color midnightNavy = Color(0xFF0B172A);
 
     return Scaffold(
-      backgroundColor: midnightNavy,
-      body: Center(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Large Hero Truck - Full width, no nested framing
-              Image.asset(
-                'assets/images/logo.jpeg',
-                width: MediaQuery.of(context).size.width,
-                fit: BoxFit.cover,
-                alignment: Alignment.center,
-              ),
-              const SizedBox(height: 20),
-              // Brand Typography
-              Column(
-                children: [
-                  Text(
-                    'Haul Alerts',
-                    style: GoogleFonts.roboto(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 48,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'PRECISION ROUTING & SAFETY',
-                    style: GoogleFonts.roboto(
-                      color: const Color(0xFFE67E22), // Signature Safety Orange
-                      letterSpacing: 4.0,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 100), // Push content up slightly
-            ],
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Background Image
+          Image.asset(
+            'assets/images/logo.jpeg',
+            fit: BoxFit.cover,
+            alignment: Alignment.center,
           ),
-        ),
+          // Subtle Bottom Fade
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withOpacity(0.0),
+                  Colors.black.withOpacity(0.4),
+                ],
+                stops: const [0.7, 1.0],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

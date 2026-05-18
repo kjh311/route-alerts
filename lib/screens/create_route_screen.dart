@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show Colors, Icons, Material, BlendMode;
+import 'package:flutter/material.dart' show Colors, Icons, Material, BlendMode, TimeOfDay, showTimePicker, Theme, ThemeData, ColorScheme;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
@@ -117,32 +117,28 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
     }
   }
 
-  void _showTimePicker() {
-    showCupertinoModalPopup(
+  Future<void> _showTimePicker() async {
+    final TimeOfDay? picked = await showTimePicker(
       context: context,
-      builder: (context) => Container(
-        height: 250,
-        color: const Color(0xFF1C1C1E),
-        child: Column(
-          children: [
-            SizedBox(
-              height: 200,
-              child: CupertinoTimerPicker(
-                mode: CupertinoTimerPickerMode.hm,
-                initialTimerDuration: _shiftStartTime,
-                onTimerDurationChanged: (Duration newDuration) {
-                  setState(() => _shiftStartTime = newDuration);
-                },
-              ),
+      initialTime: TimeOfDay(hour: _shiftStartTime.inHours, minute: _shiftStartTime.inMinutes % 60),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.dark().copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: Color(0xFFE67E22), // Dial selection color
+              onPrimary: Colors.white,
+              surface: Color(0xFF1A1A1A), // Background
+              onSurface: Colors.white,
             ),
-            CupertinoButton(
-              child: const Text('DONE', style: TextStyle(color: Color(0xFFE67E22), fontWeight: FontWeight.bold)),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ],
-        ),
-      ),
+            dialogBackgroundColor: const Color(0xFF1A1A1A),
+          ),
+          child: child!,
+        );
+      },
     );
+    if (picked != null) {
+      setState(() => _shiftStartTime = Duration(hours: picked.hour, minutes: picked.minute));
+    }
   }
 
   void _showAlertLeadPicker() {
@@ -435,8 +431,15 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
           children: [
             if (_isMapsApiLoaded)
               GoogleMap(
-                initialCameraPosition: CameraPosition(target: LatLng(39.8283, -98.5795), zoom: 3),
-                onMapCreated: (controller) => _mapController = controller,
+                initialCameraPosition: const CameraPosition(target: LatLng(39.8283, -98.5795), zoom: 3),
+                onMapCreated: (controller) {
+                  _mapController = controller;
+                  // If we already have points, fit them now that the controller is ready
+                  final points = _decodeEncodedPolyline(_encodedPolyline);
+                  if (points.isNotEmpty) {
+                    Future.delayed(const Duration(milliseconds: 500), () => _fitBounds(points));
+                  }
+                },
                 markers: _markers,
                 polylines: _polylines,
                 myLocationButtonEnabled: false,
@@ -529,7 +532,11 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       ));
 
       setState(() => _isGeneratingRoute = false);
-      Future.delayed(const Duration(milliseconds: 300), () => _fitBounds(points));
+      
+      // Increased delay to ensure the map widget has rendered before animating
+      if (points.isNotEmpty) {
+        Future.delayed(const Duration(milliseconds: 800), () => _fitBounds(points));
+      }
 
     } catch (e) {
       setState(() => _isGeneratingRoute = false);
@@ -541,9 +548,36 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
     if (_startData?['lat'] == null) return;
     setState(() {
       _markers.clear();
-      _markers.add(Marker(markerId: MarkerId('start'), position: LatLng(_startData!['lat'], _startData!['lng'])));
+      
+      // Origin
+      _markers.add(Marker(
+        markerId: const MarkerId('start'), 
+        position: LatLng(_startData!['lat'], _startData!['lng']),
+        infoWindow: InfoWindow(title: 'Origin: ${_startData!['name']}'),
+      ));
+
+      // In-between points
+      for (int i = 0; i < _generatedWaypoints.length; i++) {
+        final wp = _generatedWaypoints[i];
+        // Skip adding if it's the very first or very last to avoid overlapping with start/end
+        if (i == 0 || i == _generatedWaypoints.length - 1) continue;
+        
+        _markers.add(Marker(
+          markerId: MarkerId('wp_$i'),
+          position: LatLng(wp['lat'], wp['lng']),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+          infoWindow: InfoWindow(title: wp['name']),
+        ));
+      }
+
+      // Destination
       if (_endData?['lat'] != null) {
-        _markers.add(Marker(markerId: MarkerId('end'), position: LatLng(_endData!['lat'], _endData!['lng'])));
+        _markers.add(Marker(
+          markerId: const MarkerId('end'), 
+          position: LatLng(_endData!['lat'], _endData!['lng']),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+          infoWindow: InfoWindow(title: 'Destination: ${_endData!['name']}'),
+        ));
       }
     });
   }
@@ -564,7 +598,10 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       if (p.longitude < minLng) minLng = p.longitude;
       if (p.longitude > maxLng) maxLng = p.longitude;
     }
-    await _mapController!.animateCamera(CameraUpdate.newLatLngBounds(LatLngBounds(southwest: LatLng(minLat, minLng), northeast: LatLng(maxLat, maxLng)), 50.0));
+    await _mapController!.animateCamera(CameraUpdate.newLatLngBounds(
+      LatLngBounds(southwest: LatLng(minLat, minLng), northeast: LatLng(maxLat, maxLng)), 
+      kIsWeb ? 20.0 : 60.0 // Adjusted padding for mobile/web
+    ));
   }
 
   Future<void> _saveRoute() async {
@@ -582,14 +619,10 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
         'user_id': userId,
         'origin_name': _startData!['name'],
         'destination_name': _endData!['name'],
-        'latitude_start': _startData!['lat'],
-        'longitude_start': _startData!['lng'],
-        'latitude_end': _endData!['lat'],
-        'longitude_end': _endData!['lng'],
         'departure_time': startTimeStr,
         'driving_days': _selectedDays,
         'alert_lead_minutes': _alertLeadTime,
-        'shift_duration': _duration,
+        'shift_duration': (_duration * 60).round(), // Convert hours to total minutes (integer)
         'route_polyline': _encodedPolyline,
         'waypoints': _generatedWaypoints,
         'is_active': true,
