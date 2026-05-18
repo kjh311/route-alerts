@@ -606,8 +606,20 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
 
   Future<void> _saveRoute() async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId == null || _startData == null || _endData == null || _selectedDays.isEmpty) {
-      _showToast('Please check all parameters and log in.');
+    if (userId == null) {
+      _showToast('Session expired. Please log in again.');
+      return;
+    }
+    if (_startData == null) {
+      _showToast('Please select a valid starting point.');
+      return;
+    }
+    if (_endData == null) {
+      _showToast('Please select a valid destination.');
+      return;
+    }
+    if (_selectedDays.isEmpty) {
+      _showToast('Please select at least one driving day.');
       return;
     }
 
