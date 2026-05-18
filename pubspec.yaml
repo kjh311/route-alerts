@@ -71,13 +71,13 @@ flutter_launcher_icons:
   flutter_lints: ^6.0.0
 
 flutter_native_splash:
-  color: "#0B172A"
+  color: "#012E56"
   background_image: "assets/images/logo.jpeg"
   android_gravity: fill
   ios_content_mode: scaleAspectFill
   fullscreen: true
   android_12:
-    color: "#0B172A"
+    color: "#012E56"
     image: "assets/images/logo.png"
 
 # For information on the generic Dart part of this file, see the

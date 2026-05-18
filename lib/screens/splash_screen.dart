@@ -83,7 +83,7 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     // Exact background color from Image_1.png to ensure seamless blending
-    const Color midnightNavy = Color(0xFF0B172A);
+    const Color midnightNavy = Color(0xFF012E56);
 
     return Scaffold(
       body: Stack(
