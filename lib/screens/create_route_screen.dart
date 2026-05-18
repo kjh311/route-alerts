@@ -50,6 +50,7 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
 
   final List<String> _daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   final NotificationService _notificationService = NotificationService();
+  final List<TextEditingController> _waypointControllers = [];
 
   @override
   void initState() {
@@ -99,11 +100,25 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
         ));
       }
 
+      for (var wp in _generatedWaypoints) {
+        _waypointControllers.add(TextEditingController(text: wp['name']));
+      }
+
       _updateMarkers();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _fitBounds(points);
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _startController.dispose();
+    _endController.dispose();
+    for (var controller in _waypointControllers) {
+      controller.dispose();
+    }
+    super.dispose();
   }
 
   Future<void> _initMaps() async {
@@ -245,7 +260,10 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
                   _buildCard(
                     label: 'Calculated Route Points',
                     child: Column(
-                      children: _generatedWaypoints.map((wp) => _buildWaypointTile(wp)).toList(),
+                      children: [
+                        for (int i = 1; i < _generatedWaypoints.length - 1; i++)
+                          _buildWaypointTile(_generatedWaypoints[i], i),
+                      ],
                     ),
                   ),
                 const SizedBox(height: 16),
@@ -399,27 +417,56 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
     );
   }
 
-  Widget _buildWaypointTile(Map<String, dynamic> wp) {
+  Widget _buildWaypointTile(Map<String, dynamic> wp, int index) {
+    if (index >= _waypointControllers.length) {
+      _waypointControllers.add(TextEditingController(text: wp['name']));
+    }
+    
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF000000),
-        borderRadius: BorderRadius.circular(8),
-      ),
+      margin: const EdgeInsets.only(bottom: 12),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(CupertinoIcons.location_solid, color: CupertinoColors.systemGrey, size: 16),
-          const SizedBox(width: 12),
-          Expanded(child: Text(wp['name'], style: const TextStyle(color: CupertinoColors.white, fontSize: 13))),
-          if (wp['weather'] != null) ...[
-             const Icon(CupertinoIcons.sun_max_fill, color: Color(0xFFE67E22), size: 14),
-             const SizedBox(width: 4),
-             Text('${(wp['weather']['temp'] as num).round()}°', style: const TextStyle(color: CupertinoColors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-          ],
+          Expanded(
+            child: LocationSearchField(
+              controller: _waypointControllers[index],
+              label: 'Point ${index + 1}',
+              icon: CupertinoIcons.location,
+              iconColor: CupertinoColors.systemGrey,
+              hintText: 'Enter waypoint city',
+              onSelected: (desc, lat, lng) {
+                setState(() {
+                  _generatedWaypoints[index] = {
+                    ..._generatedWaypoints[index],
+                    'name': desc.split(',').first,
+                    'lat': lat ?? _generatedWaypoints[index]['lat'],
+                    'lng': lng ?? _generatedWaypoints[index]['lng'],
+                  };
+                  _updateMarkers();
+                });
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            onPressed: () => _deleteWaypoint(index),
+            child: const Icon(CupertinoIcons.trash, color: CupertinoColors.systemRed, size: 20),
+          ),
         ],
       ),
     );
+  }
+
+  void _deleteWaypoint(int index) {
+    setState(() {
+      _generatedWaypoints.removeAt(index);
+      if (index < _waypointControllers.length) {
+        _waypointControllers[index].dispose();
+        _waypointControllers.removeAt(index);
+      }
+      _updateMarkers();
+    });
   }
 
   Widget _buildMapPreview() {
@@ -519,6 +566,15 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
       _generatedWaypoints = List<Map<String, dynamic>>.from(result['waypoints'] ?? []);
       _totalDistanceMiles = (result['total_distance_miles'] as num?)?.toInt() ?? 0;
       _totalDurationMinutes = (result['total_duration_minutes'] as num?)?.toInt() ?? 0;
+
+      // Sync controllers
+      for (var controller in _waypointControllers) {
+        controller.dispose();
+      }
+      _waypointControllers.clear();
+      for (var wp in _generatedWaypoints) {
+        _waypointControllers.add(TextEditingController(text: wp['name']));
+      }
 
       final points = _decodeEncodedPolyline(_encodedPolyline);
       _updateMarkers();
