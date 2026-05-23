@@ -294,13 +294,43 @@ class _CreateRouteScreenState extends State<CreateRouteScreen> {
               _buildCard(
                 label: 'Shift Duration',
                 headerAction: Text('${_duration.toStringAsFixed(1)} HR', style: const TextStyle(color: Color(0xFFE67E22), fontWeight: FontWeight.bold)),
-                child: CupertinoSlider(
-                  value: _duration,
-                  min: 0,
-                  max: 14,
-                  divisions: 28,
-                  activeColor: const Color(0xFFE67E22),
-                  onChanged: (v) => setState(() => _duration = v),
+                child: Column(
+                  children: [
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // Background tick dots for each half hour
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: List.generate(29, (index) => Container(
+                              width: 3,
+                              height: 3,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: _duration >= (index * 0.5) 
+                                  ? const Color(0xFFE67E22).withOpacity(0.5) 
+                                  : const Color(0xFF444444),
+                              ),
+                            )),
+                          ),
+                        ),
+                        // The Slider itself
+                        SizedBox(
+                          width: double.infinity,
+                          child: CupertinoSlider(
+                            value: _duration,
+                            min: 0,
+                            max: 14,
+                            divisions: 28,
+                            activeColor: const Color(0xFFE67E22),
+                            onChanged: (v) => setState(() => _duration = v),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 16),

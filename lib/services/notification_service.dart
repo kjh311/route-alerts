@@ -14,6 +14,117 @@ import '../main.dart';
 import '../theme/design_system.dart';
 import 'package:flutter/material.dart';
 import '../screens/navigation_shell.dart';
+import 'package:workmanager/workmanager.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((task, inputData) async {
+    final String? routeId = inputData?['routeId'];
+    final int? notificationId = inputData?['notificationId'];
+    debugPrint('BACKGROUND TASK START: Task=$task | RouteID=$routeId | NotifID=$notificationId');
+    
+    try {
+      // 1. Initialize core services in background
+      WidgetsFlutterBinding.ensureInitialized();
+      
+      debugPrint('BACKGROUND: Loading .env...');
+      await dotenv.load(fileName: ".env");
+      
+      final url = dotenv.env['SUPABASE_URL'];
+      final anon = dotenv.env['SUPABASE_ANON_KEY'];
+      
+      if (url == null || anon == null) {
+        debugPrint('BACKGROUND CRITICAL: SUPABASE ENVS MISSING');
+        return Future.value(false);
+      }
+
+      debugPrint('BACKGROUND: Initializing Supabase...');
+      await Supabase.initialize(url: url, anonKey: anon);
+
+      // Give a tiny window for session to recover from platform storage
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      final client = Supabase.instance.client;
+      final userId = client.auth.currentUser?.id;
+      debugPrint('BACKGROUND: Auth Check | UserID=$userId');
+
+      if (routeId == null) {
+        debugPrint('BACKGROUND ERROR: No RouteID provided');
+        return Future.value(false);
+      }
+
+      // 2. Fetch route data
+      debugPrint('BACKGROUND: Fetching route $routeId...');
+      final response = await client
+          .from('routes')
+          .select()
+          .eq('id', routeId)
+          .maybeSingle(); // Use maybeSingle to avoid throw if not found (RLS issue)
+      
+      if (response == null) {
+        debugPrint('BACKGROUND ERROR: Route not found or RLS restricted. User=$userId | Route=$routeId');
+        return Future.value(false);
+      }
+      
+      final route = RouteModel.fromJson(response);
+      debugPrint('BACKGROUND: Processing route "${route.originName}" | isActive=${route.isActive}');
+      
+      if (!route.isActive) {
+        debugPrint('BACKGROUND: Skipping inactive route');
+        return Future.value(true);
+      }
+
+      // 3. Perform Audit
+      debugPrint('BACKGROUND: Starting weather audit...');
+      final now = DateTime.now();
+      final timeParts = route.departureTime.split(':');
+      final departureDateTime = DateTime(now.year, now.month, now.day, 
+          int.parse(timeParts[0]), int.parse(timeParts[1]));
+
+      final audit = await WeatherService().auditRouteWeather(
+        departureTime: departureDateTime,
+        waypoints: List<Map<String, dynamic>>.from(route.waypoints),
+        shiftDurationHours: route.shiftDuration,
+        totalDistanceMiles: route.waypoints.last['distance_from_origin_miles'] ?? 0,
+      );
+
+      debugPrint('BACKGROUND: Weather audit complete. Status=${audit['status']}');
+
+      debugPrint('BACKGROUND: Generating AI Briefing...');
+      final aiBriefing = await AIService().generateWeatherBriefing(audit);
+      debugPrint('BACKGROUND: AI Briefing ready (${aiBriefing.length} chars)');
+      
+      // 4. Update DB so the user sees it in app too
+      audit['ai_briefing'] = aiBriefing;
+      debugPrint('BACKGROUND: Updating Supabase...');
+      await client
+          .from('routes')
+          .update({'weather_condition': audit})
+          .eq('id', routeId);
+      debugPrint('BACKGROUND: Database updated successfully');
+
+      // 5. Show the notification with the FRESH AI briefing
+      final displayTitle = 'HAUL BRIEFING: ${route.originName}';
+      final notificationService = NotificationService();
+      await notificationService.init(); // CRITICAL: Must initialize in background isolate
+      
+      await notificationService.sendImmediateSummaryNotification(
+        title: displayTitle,
+        body: aiBriefing,
+        routeId: routeId,
+        notificationId: notificationId,
+      );
+      
+      debugPrint('BACKGROUND TASK SUCCESS: Alert sent for $routeId');
+      return Future.value(true);
+    } catch (e, stack) {
+      debugPrint('BACKGROUND TASK CRITICAL ERROR: $e');
+      debugPrint(stack.toString());
+      return Future.value(false);
+    }
+  });
+}
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -108,6 +219,11 @@ class NotificationService {
 
       await androidImplementation?.createNotificationChannel(channel);
     }
+    
+    await Workmanager().initialize(
+      callbackDispatcher,
+      isInDebugMode: kDebugMode,
+    );
 
     // 1. Diagnostics & Permissions
     debugPrint('DEBUG: Timezone: ${tz.local.name}');
@@ -177,78 +293,92 @@ class NotificationService {
     final String? cachedBriefing = audit?['ai_briefing']?.toString();
     
     final String aiBriefing = 'Haul Alert: Departure scheduled. Tap for route overview.';
-        
     final String displayTitle = 'HAUL BRIEFING: ${route.originName}';
+
     for (int i = 1; i <= 7; i++) {
       final isInDrivingDays = route.drivingDays.contains(i);
-      debugPrint('DEBUG: Checking Day $i: is it in driving_days? $isInDrivingDays');
-      
       if (!isInDrivingDays) continue;
 
       final int day = i;
       final int notificationId = (route.id.hashCode + day).abs();
-      final int dartDay = day; // Use day directly (Expected 1-7)
+      final int dartDay = day; 
       final scheduledDate = _nextInstanceOfDayAndTime(dartDay, alertDateTime.hour, alertDateTime.minute);
       
-      debugPrint('DEBUG: Target TZDateTime for Day $day: $scheduledDate');
-
-      // IMMEDIATE TEST RULE: If scheduled within 10 mins from now, fire immediately
-      bool fireNow = false;
       final nowTZ = tz.TZDateTime.now(tz.local);
-      final diff = scheduledDate.difference(nowTZ).inMinutes;
-      if (diff >= 0 && diff <= 10) {
-        fireNow = true;
-        debugPrint('DEBUG: [IMMEDIATE TEST] Alert is within 10 mins ($diff mins). Triggering NOW.');
+      final initialDelay = scheduledDate.difference(nowTZ);
+
+      if (initialDelay.isNegative) continue;
+
+      // 1. Schedule the EXACT alarm for reliability (Placeholder text)
+      try {
+        await _notificationsPlugin.zonedSchedule(
+          id: notificationId,
+          title: displayTitle,
+          body: aiBriefing,
+          scheduledDate: scheduledDate,
+          notificationDetails: NotificationDetails(
+            android: AndroidNotificationDetails(
+              'shift_alerts_v1',
+              'Shift Alerts',
+              channelDescription: 'High-priority shift reminders',
+              importance: Importance.max,
+              priority: Priority.high,
+              sound: const RawResourceAndroidNotificationSound('horn'),
+              styleInformation: BigTextStyleInformation(
+                aiBriefing,
+                contentTitle: displayTitle,
+                summaryText: 'Haul Weather Briefing',
+              ),
+            ),
+            iOS: const DarwinNotificationDetails(
+              sound: 'horn.mp3',
+            ),
+          ),
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+          payload: jsonEncode({
+            'type': 'scheduled',
+            'title': displayTitle,
+            'body': aiBriefing,
+            'routeId': route.id,
+          }),
+        );
+      } catch (e) {
+        debugPrint('WARNING: zonedSchedule failed for id $notificationId: $e');
       }
 
-      await _notificationsPlugin.zonedSchedule(
-        id: notificationId,
-        title: displayTitle,
-        body: aiBriefing,
-        scheduledDate: fireNow ? nowTZ.add(const Duration(seconds: 2)) : scheduledDate,
-        notificationDetails: NotificationDetails(
-          android: AndroidNotificationDetails(
-            'shift_alerts_v1',
-            'Shift Alerts',
-            channelDescription: 'High-priority shift reminders with custom sound',
-            importance: Importance.max,
-            priority: Priority.high,
-            ongoing: true,
-            autoCancel: false,
-            playSound: true,
-            sound: const RawResourceAndroidNotificationSound('horn'),
-            timeoutAfter: null,
-            styleInformation: BigTextStyleInformation(
-              aiBriefing,
-              contentTitle: displayTitle,
-              summaryText: 'Haul Weather Briefing',
-            ),
-            actions: const [
-              AndroidNotificationAction('dismiss_action', 'Dismiss'),
-            ],
-          ),
-          iOS: const DarwinNotificationDetails(
-            sound: 'horn.mp3',
-          ),
-        ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-        payload: jsonEncode({
-          'type': 'scheduled',
-          'title': displayTitle,
-          'body': aiBriefing,
-          'routeId': route.id,
-        }),
-      );
+      // 2. Schedule the background audit task 15 mins before (Optional/Best effort)
+      try {
+        final auditDelay = initialDelay.inMinutes > 20 
+            ? initialDelay - const Duration(minutes: 15) 
+            : const Duration(seconds: 10);
+            
+        final uniqueName = '${route.id}_$day';
+        await Workmanager().registerOneOffTask(
+          uniqueName,
+          'audit_on_fire',
+          initialDelay: auditDelay,
+          inputData: {
+            'routeId': route.id,
+            'notificationId': notificationId, // Pass ID to sync
+          },
+          constraints: Constraints(networkType: NetworkType.connected),
+        );
+        debugPrint('DEBUG: Scheduled background worker $uniqueName for day $day');
+      } catch (e) {
+        debugPrint('WARNING: Workmanager registration failed for route ${route.id}: $e');
+      }
       
-      debugPrint('DEBUG: Scheduled notification $notificationId for day $day at ${alertDateTime.hour}:${alertDateTime.minute}');
+      debugPrint('DEBUG: Done processing schedule for day $day');
     }
   }
 
   Future<void> cancelRouteAlert(String routeId) async {
-    // Cancel all IDs that could have been generated for this route
+    // Cancel both notifications and background tasks
+    await _notificationsPlugin.cancel(id: routeId.hashCode.abs());
+    await Workmanager().cancelByUniqueName(routeId);
     for (int day = 0; day <= 6; day++) {
-      await _notificationsPlugin.cancel(id: (routeId.hashCode + day).abs());
+       await Workmanager().cancelByUniqueName('${routeId}_$day');
     }
   }
 
@@ -330,6 +460,8 @@ class NotificationService {
   Future<void> sendImmediateSummaryNotification({
     required String title,
     required String body,
+    String? routeId,
+    int? notificationId,
   }) async {
     final androidDetails = AndroidNotificationDetails(
       'shift_alerts_v1',
@@ -358,7 +490,7 @@ class NotificationService {
     );
 
     await _notificationsPlugin.show(
-      id: DateTime.now().millisecond,
+      id: notificationId ?? DateTime.now().millisecond,
       title: title,
       body: body,
       notificationDetails: NotificationDetails(
@@ -371,6 +503,7 @@ class NotificationService {
         'type': 'briefing',
         'title': title,
         'body': body,
+        'routeId': routeId,
       }),
     );
   }

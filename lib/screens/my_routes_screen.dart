@@ -20,27 +20,43 @@ class MyRoutesScreen extends StatefulWidget {
 
 class _MyRoutesScreenState extends State<MyRoutesScreen> {
   final RouteService _routeService = RouteService();
-  late Future<List<RouteModel>> _routesFuture;
   final ScrollController _scrollController = ScrollController();
   final Map<String?, GlobalKey> _cardKeys = {};
+  late Stream<List<RouteModel>> _routesStream;
+  final ValueNotifier<List<RouteModel>> _routesNotifier = ValueNotifier([]);
+  String? _lastFocusId;
 
   @override
   void initState() {
     super.initState();
+    _routesStream = _routeService.routesStream;
+    _routesStream.listen((routes) {
+      _routesNotifier.value = routes;
+    });
   }
 
   void _scrollToRoute(String routeId) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final key = _cardKeys[routeId];
-      if (key?.currentContext != null) {
-        Scrollable.ensureVisible(
-          key!.currentContext!,
-          duration: const Duration(milliseconds: 600),
-          curve: Curves.easeInOut,
-          alignment: 0.1,
-        );
-      }
-    });
+    // Retry mechanism to ensure context is available after build
+    void attemptScroll(int retries) {
+      if (retries <= 0) return;
+      
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final key = _cardKeys[routeId];
+        if (key?.currentContext != null) {
+          Scrollable.ensureVisible(
+            key!.currentContext!,
+            duration: const Duration(milliseconds: 600),
+            curve: Curves.easeInOut,
+            alignment: 0.1,
+          );
+        } else {
+          // If child isn't rendered yet (lazy loading), wait a bit and retry
+          Future.delayed(const Duration(milliseconds: 100), () => attemptScroll(retries - 1));
+        }
+      });
+    }
+
+    attemptScroll(5);
   }
 
   @override
@@ -67,41 +83,13 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
       ),
       child: SafeArea(
         bottom: true,
-        child: StreamBuilder<List<RouteModel>>(
-          stream: _routeService.routesStream,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CupertinoActivityIndicator(radius: 12));
-            }
-
-            if (snapshot.hasError) {
-              return SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 64),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(CupertinoIcons.exclamationmark_triangle, size: 48, color: CupertinoColors.systemRed),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Failed to load routes',
-                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: CupertinoColors.white),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        snapshot.error.toString(),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: CupertinoColors.systemGrey),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }
-
-            final routes = snapshot.data ?? [];
-
+        child: ValueListenableBuilder<List<RouteModel>>(
+          valueListenable: _routesNotifier,
+          builder: (context, routes, _) {
             if (routes.isEmpty) {
+              // We should check if snapshot was empty or still loading
+              // For simplicity, if notifier is empty but stream hasn't emitted, show loading
+              // But here we'll just handle empty state
               return SingleChildScrollView(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 100),
@@ -130,8 +118,9 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
               );
             }
 
-            // Auto focus on notification tap
-            if (widget.focusRouteId != null) {
+            // Auto focus on notification tap - only trigger once per new focus ID
+            if (widget.focusRouteId != null && widget.focusRouteId != _lastFocusId) {
+              _lastFocusId = widget.focusRouteId;
               _scrollToRoute(widget.focusRouteId!);
             }
 
@@ -142,10 +131,14 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
               separatorBuilder: (context, index) => const SizedBox(height: 16),
               itemBuilder: (context, index) {
                 final route = routes[index];
-                _cardKeys[route.id] = GlobalKey();
+                final key = _cardKeys.putIfAbsent(route.id, () => GlobalKey());
                 return _RouteCard(
-                  key: _cardKeys[route.id],
+                  key: key,
                   route: route,
+                  onDelete: () {
+                    // Optimistic removal
+                    _routesNotifier.value = _routesNotifier.value.where((r) => r.id != route.id).toList();
+                  },
                   autoExpandAiSummary: widget.focusRouteId == route.id,
                 );
               },
@@ -160,10 +153,12 @@ class _MyRoutesScreenState extends State<MyRoutesScreen> {
 class _RouteCard extends StatefulWidget {
   final RouteModel route;
   final bool autoExpandAiSummary;
+  final VoidCallback onDelete;
 
   const _RouteCard({
     super.key,
     required this.route,
+    required this.onDelete,
     this.autoExpandAiSummary = false,
   });
 
@@ -188,6 +183,16 @@ class _RouteCardState extends State<_RouteCard> {
   void initState() {
     super.initState();
     _showAiSummary = widget.autoExpandAiSummary;
+  }
+
+  @override
+  void didUpdateWidget(covariant _RouteCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.autoExpandAiSummary && !oldWidget.autoExpandAiSummary) {
+      setState(() {
+        _showAiSummary = true;
+      });
+    }
   }
 
   Future<void> _toggleActive(bool value) async {
@@ -239,6 +244,7 @@ class _RouteCardState extends State<_RouteCard> {
     );
 
     if (confirmed == true) {
+      widget.onDelete(); // Trigger optimistic UI in parent
       try {
         await Supabase.instance.client
             .from('routes')

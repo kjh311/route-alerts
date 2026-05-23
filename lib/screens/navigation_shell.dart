@@ -66,18 +66,22 @@ class _NavigationShellState extends State<NavigationShell> {
 
   Widget _buildBottomBar() {
     return Container(
-      height: 85,
-      padding: const EdgeInsets.only(bottom: 20),
       decoration: const BoxDecoration(
         color: Color(0xFF1A1A1A),
         border: Border(top: BorderSide(color: Color(0xFF333333), width: 0.5)),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildNavItem(0, CupertinoIcons.bus, 'ROUTES'),
-          _buildNavItem(1, CupertinoIcons.person, 'PROFILE'),
-        ],
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildNavItem(0, CupertinoIcons.bus, 'ROUTES'),
+              _buildNavItem(1, CupertinoIcons.person, 'PROFILE'),
+            ],
+          ),
+        ),
       ),
     );
   }
